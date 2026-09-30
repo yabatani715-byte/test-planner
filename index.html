@@ -113,7 +113,24 @@ let S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},lsGet(LS,{}));
 S.settings=Object.assign(defSettings(),S.settings||{});
 let IDX=Object.assign({vault:null,notes:[],sources:[],cited:[],outputs:[],at:0},lsGet(LS_IDX,{}));
 let SYNC=lsGet(LS_SYNC,{});
-const save=()=>{lsSet(LS,S);scheduleSync()};
+S.deleted=S.deleted||{};S.ups=S.ups||{};S.logs.forEach(l=>l.id||(l.id=Math.random().toString(36).slice(2,9)));
+// 変更検知：保存のたびに前回との差分を見て、変わった項目に更新時刻(up)を付ける（端末間の統合に使う）
+let SNAP=null;
+const snapOf=o=>{const {up,...r}=o;return JSON.stringify(r)};
+function takeSnap(){SNAP={settings:JSON.stringify(S.settings),dayCap:JSON.stringify(S.dayCap)};S.tests.forEach(t=>SNAP['T'+t.id]=snapOf(t));S.tasks.forEach(t=>SNAP['K'+t.id]=snapOf(t))}
+function stamp(){
+  const now=Date.now();
+  if(SNAP){
+    const cur={};S.tests.forEach(t=>cur['T'+t.id]=t);S.tasks.forEach(t=>cur['K'+t.id]=t);
+    for(const [k,o] of Object.entries(cur))if(SNAP[k]!==snapOf(o))o.up=now;
+    for(const k of Object.keys(SNAP))if((k[0]==='T'||k[0]==='K')&&!cur[k])S.deleted[k.slice(1)]=now;
+    if(SNAP.settings!==JSON.stringify(S.settings))S.ups.settings=now;
+    if(SNAP.dayCap!==JSON.stringify(S.dayCap))S.ups.dayCap=now;
+  }
+  takeSnap();
+}
+takeSnap();
+const save=()=>{stamp();lsSet(LS,S);scheduleSync();scheduleCloud()};
 
 // ===== 日付 =====
 const pad=n=>String(n).padStart(2,'0');
@@ -275,8 +292,9 @@ async function scanVault(){
   }
   try{await walk(await getDir(vault,['sources']),'sources',src)}catch{}
   const outputs=[];try{for await(const [n,h] of (await getDir(vault,['outputs'])).entries())if(h.kind==='file')outputs.push(n)}catch{}
-  IDX={vault:vault.name,notes,sources:src.map(x=>x[0]),cited:[...cited],outputs,at:Date.now()};
-  lsSet(LS_IDX,IDX);
+  const nx={vault:vault.name,notes,sources:src.map(x=>x[0]),cited:[...cited],outputs};
+  const {at,...old}=IDX;
+  if(canon(old)!==canon(nx)){IDX={...nx,at:Date.now()};lsSet(LS_IDX,IDX);scheduleCloud()}
 }
 const testFile=t=>(t.name||'テスト').replace(/[\\/:*?"<>|#^[\]]/g,'_')+'.md';
 
@@ -360,8 +378,9 @@ async function syncNow(ask){
     await scanVault();
     const dir=await getDir(vault,PLAN_DIR,true);
     const files=[[DASH,null],...S.tests.map(t=>[testFile(t),t])];
+    const before=canon(S);
     for(const [name,t] of files){const txt=await readText(dir,name);if(txt==null)continue;const m=SYNC[name];if(m&&m.hash===hash(txt))continue;importMd(txt,m?m.at:0,t)}
-    lsSet(LS,S);
+    stamp();lsSet(LS,S);if(canon(S)!==before)scheduleCloud();
     const P=buildPlan();
     for(const [name,t] of files){const md=t?renderTestMd(t):renderDashMd(P);const cur=await readText(dir,name);if(cur!==md)await writeText(dir,name,md);SYNC[name]={hash:hash(md),at:Date.now()}}
     lsSet(LS_SYNC,SYNC);
@@ -378,11 +397,68 @@ async function connectVault(){
   }catch(e){if(e.name!=='AbortError')toast('連携できませんでした: '+e.message)}
 }
 
+// ===== クラウド同期（GitHubの非公開リポジトリ経由でスマホ⇔PC） =====
+const LS_GH='test-planner-gh-v1',GH_FILE='planner.json';
+let GH=lsGet(LS_GH,{repo:'yabatani715-byte/test-planner-data',token:''}),ghMsg='',ghErr='',ghBusy=false,ghT=null;
+function canon(o){
+  if(Array.isArray(o)){const a=o.map(canon);if(o.length&&o[0]&&o[0].id!=null)a.sort();return '['+a.join(',')+']'}
+  if(o&&typeof o==='object')return '{'+Object.keys(o).sort().map(k=>JSON.stringify(k)+':'+canon(o[k])).join(',')+'}';
+  return JSON.stringify(o);
+}
+function b64e(s){const b=new TextEncoder().encode(s);let r='';for(let i=0;i<b.length;i+=0x8000)r+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));return btoa(r)}
+const b64d=s=>new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s/g,'')),c=>c.charCodeAt(0)));
+function mergeS(a,b){
+  const del={...(a.deleted||{})};for(const [k,v] of Object.entries(b.deleted||{}))del[k]=Math.max(del[k]||0,v);
+  const byId=(x=[],y=[])=>{const m=new Map();for(const o of [...x,...y]){const p=m.get(o.id);if(!p||(o.up||0)>(p.up||0))m.set(o.id,o)}return [...m.values()].filter(o=>!(del[o.id]>=(o.up||0)))};
+  const done={...(a.done||{})};for(const [k,v] of Object.entries(b.done||{}))if(!done[k]||(v.up||0)>(done[k].up||0))done[k]=v;
+  const logs=new Map();[...(a.logs||[]),...(b.logs||[])].forEach(l=>logs.set(l.id,l));
+  const au=a.ups||{},bu=b.ups||{},pick=k=>(bu[k]||0)>(au[k]||0)?b:a;
+  return {tests:byId(a.tests,b.tests),tasks:byId(a.tasks,b.tasks),done,logs:[...logs.values()],
+    dayCap:pick('dayCap').dayCap||{},settings:Object.assign(defSettings(),pick('settings').settings||{}),
+    ups:{settings:Math.max(au.settings||0,bu.settings||0),dayCap:Math.max(au.dayCap||0,bu.dayCap||0)},deleted:del};
+}
+async function ghApi(method,body){
+  return fetch(`https://api.github.com/repos/${GH.repo}/contents/${GH_FILE}`+(method==='GET'?`?t=${Date.now()}`:''),
+    {method,cache:'no-store',headers:{Authorization:'Bearer '+GH.token,Accept:'application/vnd.github+json'},body:body?JSON.stringify(body):undefined});
+}
+function scheduleCloud(){if(!GH.token)return;clearTimeout(ghT);ghT=setTimeout(()=>cloudSync(),2000)}
+async function cloudSync(loud){
+  if(!GH.token||!GH.repo||ghBusy)return;
+  ghBusy=true;ghMsg='同期中…';renderSync();
+  try{
+    for(let n=0;n<3;n++){
+      const r=await ghApi('GET');let remote=null,sha;
+      if(r.status===200){const j=await r.json();sha=j.sha;remote=JSON.parse(b64d(j.content))}
+      else if(r.status===401)throw new Error('トークンが正しくないか、期限切れです');
+      else if(r.status===403)throw new Error('トークンにこのリポジトリへの権限がありません');
+      else if(r.status!==404)throw new Error('GitHub '+r.status);
+      if(remote){
+        const before=canon(S);
+        S=mergeS(S,remote.state||{});takeSnap();lsSet(LS,S);
+        if(remote.idx&&(remote.idx.at||0)>(IDX.at||0)){IDX=remote.idx;lsSet(LS_IDX,IDX)}
+        if(canon(S)!==before)scheduleSync();
+      }
+      const payload={v:1,state:S,idx:IDX};
+      if(remote&&canon({v:1,state:remote.state,idx:remote.idx})===canon(payload))break;
+      const p=await ghApi('PUT',{message:'sync',content:b64e(JSON.stringify(payload)),...(sha?{sha}:{})});
+      if(p.ok)break;
+      if(p.status===404)throw new Error('リポジトリが見つかりません（名前とトークンの権限を確認）');
+      if(p.status===401)throw new Error('トークンが正しくないか、期限切れです');
+      if(p.status===403)throw new Error('トークンに書き込み権限（Contents: Read and write）がありません');
+      if(p.status!==409&&p.status!==422)throw new Error('保存に失敗 '+p.status);
+    }
+    const t=new Date();ghMsg=`同期 ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+    if(loud)toast('クラウド同期OK');
+    ghErr='';
+  }catch(e){ghMsg='エラー';ghErr=navigator.onLine?(e.message||String(e)):'オフラインです';if(loud)toast('クラウド同期: '+ghErr)}
+  ghBusy=false;render();
+}
+
 // ===== タイマー =====
 const TM={mode:'work',end:0,left:null,run:false,subj:''};
 function tmTotal(){return (TM.mode==='work'?S.settings.pomo:S.settings.brk)*60}
 function tmLeft(){return TM.run?Math.max(0,Math.round((TM.end-Date.now())/1000)):(TM.left??tmTotal())}
-function logStudy(min){if(min<1)return;S.logs.push({date:today(),subject:TM.subj||'その他',min});save()}
+function logStudy(min){if(min<1)return;S.logs.push({id:uid(),date:today(),subject:TM.subj||'その他',min});save()}
 function beep(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(a.currentTime+.5)}catch{}}
 setInterval(()=>{
   if(!TM.run)return;const l=tmLeft();
@@ -396,10 +472,11 @@ setInterval(()=>{
 // ===== 画面 =====
 let TAB=lsGet(LS_TAB,'today');const OPEN=new Set();
 function renderSync(){
-  const el=$('#syncSt');
-  if(!FS_OK){el.innerHTML='<span class="dot"></span>Obsidian連携はPC版Chrome/Edgeのみ';return}
-  if(!vault){el.innerHTML='<span class="dot off"></span>Obsidian未連携';return}
-  el.innerHTML=`<span class="dot ${syncMsg==='要再接続'||syncMsg==='同期エラー'?'off':'on'}"></span>${esc(IDX.vault||vault.name)} · ${esc(syncMsg)} <button class="btn sm" data-act="sync">${syncMsg==='要再接続'?'再接続':'同期'}</button>`;
+  const el=$('#syncSt'),p=[];
+  if(vault)p.push(`<span title="Obsidian"><span class="dot ${syncMsg==='要再接続'||syncMsg==='同期エラー'?'off':'on'}"></span> Obsidian ${esc(syncMsg)}</span>`);
+  if(GH.token)p.push(`<span title="${esc(ghErr)}"><span class="dot ${ghMsg==='エラー'?'off':'on'}"></span> クラウド ${esc(ghMsg)}</span>`);
+  if(!p.length){el.innerHTML=`<a href="#" data-act="goto" data-tab="set" class="ob"><span class="dot off" style="display:inline-block"></span> 同期オフ</a>`;return}
+  el.innerHTML=`<span style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.35">${p.join('')}</span><button class="btn sm" data-act="sync">${syncMsg==='要再接続'?'再接続':'同期'}</button>`;
 }
 function itemHtml(i,opts={}){
   const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠'}[k];
@@ -498,11 +575,24 @@ function vTests(){
 function vSet(){
   const st=S.settings;
   const num=(k,l,u='分')=>`<div class="row"><label style="min-width:150px">${l}</label><input type="number" min="0" step="5" value="${st[k]}" data-act="setn" data-k="${k}">${u}</div>`;
-  return `<div class="card"><h2>🔗 Obsidian 連携</h2>
+  return `<div class="card"><h2>☁️ スマホ⇔PC 同期<span class="r">${GH.token?(ghMsg==='エラー'?'⚠ エラー':'✅ 同期中'):'未設定'}</span></h2>
+  <p class="muted" style="margin-top:0">GitHub の非公開リポジトリにデータを置いて、iPhone と PC を自動で同期します。テスト・進度・やること・勉強時間・ノート一覧がすべて同期されます。<b>PCとiPhoneのそれぞれで</b>下の2つを入れてください。</p>
+  ${ghErr?`<div class="alert w">${esc(ghErr)}</div>`:''}
+  <div class="row"><label style="min-width:90px">リポジトリ</label><input id="ghRepo" value="${esc(GH.repo)}" style="flex:1"></div>
+  <div class="row"><label style="min-width:90px">トークン</label><input id="ghToken" type="password" autocomplete="off" placeholder="github_pat_…" value="${esc(GH.token)}" style="flex:1"></div>
+  <div class="row"><button class="btn pri" data-act="ghsave">保存して同期</button>${GH.token?'<button class="btn" data-act="ghoff">この端末の同期を解除</button>':''}</div>
+  <details><summary>トークンの作り方（最初の1回だけ）</summary><ol class="muted" style="padding-left:20px">
+    <li><a class="ob" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub のトークン作成ページ</a>を開く</li>
+    <li>Token name に「テスト勉強プランナー」、Expiration は好きな期限（最長1年）</li>
+    <li>Repository access →「Only select repositories」→ <b>test-planner-data</b> を選ぶ</li>
+    <li>Permissions →「Contents」を <b>Read and write</b> にする</li>
+    <li>「Generate token」を押し、出てきた <code>github_pat_…</code> をコピーして上に貼る（iPhoneにはAirDropやメモで送ると楽）</li>
+  </ol><div class="muted">このリポジトリだけを読み書きできる鍵なので、ほかのリポジトリには触れません。トークンはこの端末の中にだけ保存されます。</div></details></div>
+  <div class="card"><h2>🔗 Obsidian 連携</h2>
   ${FS_OK?`<p class="muted" style="margin-top:0">iCloud Drive の <b>second brain</b> フォルダを選んでください。<code>wiki/</code> のノート（教科・時期）を読み取り、進度表と今日のTODOを <code>outputs/勉強計画/</code> に書き出します。<code>sources/</code> と <code>wiki/</code> には書き込みません。</p>
   <div class="row"><button class="btn pri" data-act="connect">${vault?'別のフォルダに変更':'フォルダを選んで連携'}</button>${vault?`<button class="btn" data-act="sync">今すぐ同期</button>`:''}</div>
-  ${IDX.at?`<div class="muted">読み込み済み：ノート ${IDX.notes.length}件 / ソース ${IDX.sources.length}件（${new Date(IDX.at).toLocaleString('ja-JP')}）</div>`:''}`
-  :`<p class="muted" style="margin-top:0">このブラウザはフォルダ連携に対応していません。PCの Chrome か Edge で開いてください。iPhoneでは Obsidian の <code>outputs/勉強計画/今日のTODO</code> を開いてチェックすれば、PC側で同期したときに反映されます。</p>`}</div>
+  ${IDX.notes.length?`<div class="muted">読み込み済み：ノート ${IDX.notes.length}件 / ソース ${IDX.sources.length}件（${new Date(IDX.at).toLocaleString('ja-JP')}）</div>`:''}`
+  :`<p class="muted" style="margin-top:0">この端末ではObsidianのフォルダを直接読めません。上の「スマホ⇔PC 同期」を設定すると、PCが読み込んだノート一覧とObsidianでのチェックがこの端末にも届きます${IDX.at?`（ノート ${IDX.notes.length}件を受信済み）`:''}。</p>`}</div>
   <div class="card"><h2>⏰ 勉強時間</h2>${num('weekday','平日に使える時間')}${num('holiday','土日に使える時間')}${num('noteMin','ノート1つの目安')}${num('reviewMin','復習1回')}${num('finalMin','前日の総復習')}
   <div class="row"><label style="min-width:150px">総復習にあてる日数</label><input type="number" min="0" max="3" value="${st.reserve}" data-act="setn" data-k="reserve">日（テストの前日から）</div>
   <div class="row"><label style="min-width:150px">復習のタイミング</label><input value="${st.review.join(',')}" data-act="setrv" style="width:100px">日後（覚えた日から。忘却曲線）</div>
@@ -527,7 +617,7 @@ document.addEventListener('click',async e=>{
   e.preventDefault();
   switch(a){
     case 'goto':TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();break;
-    case 'sync':syncNow(true);break;
+    case 'sync':await cloudSync(true);await syncNow(true);break;
     case 'connect':connectVault();break;
     case 'copy':try{await navigator.clipboard.writeText(b.dataset.text);toast('コピーしました。Claudeに貼り付けてね')}catch{prompt('コピーしてください',b.dataset.text)}break;
     case 'open':OPEN.has(id)?OPEN.delete(id):OPEN.add(id);render();break;
@@ -543,7 +633,9 @@ document.addEventListener('click',async e=>{
     case 'tmreset':TM.run=false;TM.left=null;TM.mode='work';document.title='テスト勉強プランナー';render();break;
     case 'tmlog':{const m=Math.floor((tmTotal()-tmLeft())/60);logStudy(m);TM.left=null;toast(`${m}分記録しました`);render();break}
     case 'export':{const u=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));const x=document.createElement('a');x.href=u;x.download=`テスト勉強プランナー_${today()}.json`;x.click();break}
-    case 'reset':if(confirm('テスト・進度・記録をすべて消します。よろしいですか？')){S={tests:[],tasks:[],done:{},logs:[],dayCap:{},settings:defSettings()};save();render()}break;
+    case 'reset':if(confirm('テスト・進度をすべて消します（同期中の端末からも消えます）。よろしいですか？')){S.tests=[];S.tasks=[];S.dayCap={};S.settings=defSettings();Object.keys(S.done).forEach(k=>setDone(k,false));save();render()}break;
+    case 'ghsave':{GH={repo:$('#ghRepo').value.trim(),token:$('#ghToken').value.trim()};lsSet(LS_GH,GH);ghMsg='';await cloudSync(true);break}
+    case 'ghoff':if(confirm('この端末のクラウド同期を解除しますか？（データは消えません）')){GH={repo:GH.repo,token:''};lsSet(LS_GH,GH);ghMsg='';render()}break;
   }
 });
 document.addEventListener('change',async e=>{
@@ -560,16 +652,18 @@ document.addEventListener('change',async e=>{
     case 'exdate':findEx(b.dataset.t,b.dataset.id).date=b.value;save();render();break;
     case 'setn':S.settings[b.dataset.k]=Math.max(0,+b.value||0);save();break;
     case 'setrv':{const v=b.value.split(/[,、\s]+/).map(Number).filter(n=>n>0);if(v.length)S.settings.review=v;save();break}
-    case 'import':{const f=b.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.tests))throw 0;S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},d);S.settings=Object.assign(defSettings(),d.settings||{});save();render();toast('読み込みました')}catch{toast('このファイルは読み込めません')}break}
+    case 'import':{const f=b.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.tests))throw 0;(d.logs||[]).forEach(l=>l.id||(l.id=uid()));S=mergeS(S,d);save();render();toast('読み込みました')}catch{toast('このファイルは読み込めません')}break}
   }
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.tin){$(`[data-act="addtask"][data-id="${e.target.dataset.tin}"]`).click()}});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();syncNow(false)}});
-setInterval(()=>{if(!document.hidden&&!TM.run)syncNow(false)},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();cloudSync().then(()=>syncNow(false))}});
+setInterval(()=>{if(!document.hidden&&!TM.run)cloudSync().then(()=>syncNow(false))},60000);
 
 (async()=>{
   render();
-  if(FS_OK){try{vault=await idbGet('vault')||null}catch{}if(vault)syncNow(false);else renderSync()}
+  if(FS_OK){try{vault=await idbGet('vault')||null}catch{}}
+  await cloudSync();
+  if(vault)syncNow(false);else renderSync();
 })();
 </script>
 </body>
