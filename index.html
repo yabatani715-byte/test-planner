@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>テスト勉強プランナー</title>
+<link rel="manifest" href="planner-manifest.json">
+<link rel="apple-touch-icon" href="icon-study-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#5b6cff">
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--text:#1d2230;--sub:#6b7285;--line:#e3e6ee;--accent:#5b6cff;--accent2:#eef0ff;--ok:#1f9d6b;--okbg:#e5f6ee;--warn:#c77700;--warnbg:#fff4e0;--bad:#d93a45;--shadow:0 1px 3px rgba(20,30,60,.07)}
+@media (prefers-color-scheme:dark){:root{--bg:#12141b;--card:#1b1e28;--text:#e8eaf2;--sub:#9aa1b5;--line:#2c303d;--accent:#8a95ff;--accent2:#262b47;--ok:#43c38f;--okbg:#17302a;--warn:#f0a73a;--warnbg:#33290f;--bad:#f06a73;--shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif;font-size:15px;line-height:1.5;padding-bottom:40px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.hwrap{max-width:860px;margin:0 auto;padding:10px 16px 0}
+.top{display:flex;align-items:center;gap:10px}
+h1{font-size:18px;margin:0;flex:1}
+.sync{font-size:12px;color:var(--sub);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--sub)}
+.dot.on{background:var(--ok)}.dot.off{background:var(--warn)}
+nav{display:flex;gap:2px;overflow-x:auto;margin-top:8px}
+nav button{border:0;background:none;color:var(--sub);padding:8px 12px;font-size:14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+nav button.act{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+main{max-width:860px;margin:0 auto;padding:12px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.card h2 .r{margin-left:auto;font-weight:400;font-size:13px;color:var(--sub)}
+.muted{color:var(--sub);font-size:13px}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{padding:3px 9px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+input[type=number]{width:80px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:0 0 auto;border-radius:10px;padding:8px 12px;background:var(--card);border:1px solid var(--line);min-width:108px}
+.chip .s{font-size:12px;color:var(--sub)}
+.chip .d{font-size:22px;font-weight:700;line-height:1.2}
+.chip .d small{font-size:12px;font-weight:400;color:var(--sub)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item input[type=checkbox]{width:20px;height:20px;margin:2px 0 0;flex:0 0 auto;accent-color:var(--accent)}
+.item .b{flex:1;min-width:0}
+.item .t{word-break:break-word}
+.item.done .t{text-decoration:line-through;color:var(--sub)}
+.item .m{font-size:12px;color:var(--sub)}
+.item .min{font-size:12px;color:var(--sub);white-space:nowrap}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:6px;background:var(--accent2);color:var(--accent);margin-right:4px;vertical-align:1px}
+.tag.w{background:var(--warnbg);color:var(--warn)}
+.tag.over{background:var(--warnbg);color:var(--warn)}
+.sd{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+a.ob{color:var(--accent);text-decoration:none;font-size:12px;white-space:nowrap}
+.alert{border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.alert.w{background:var(--warnbg);color:var(--warn)}
+.alert.ok{background:var(--okbg);color:var(--ok)}
+.cmd{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.cmd:first-of-type{border-top:0}
+.cmd code{flex:1;background:var(--bg);padding:4px 8px;border-radius:6px;font-size:13px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.row label{font-size:13px;color:var(--sub)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.grid2{grid-template-columns:1fr}}
+.timer{text-align:center}
+.timer .clock{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px}
+.day{border-top:1px solid var(--line);padding:10px 0}
+.day:first-child{border-top:0}
+.dh{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.dh b{min-width:78px}
+.dh .bar{flex:1}
+.dl{font-size:13px;padding-left:4px}
+.dl div{padding:1px 0}
+.subj{border-top:1px solid var(--line);padding:10px 0}
+.subj:first-of-type{border-top:0}
+.sh{display:flex;align-items:center;gap:8px;cursor:pointer}
+.sh .n{font-weight:600;min-width:70px}
+.sh .bar{flex:1}
+.sh .p{font-size:13px;color:var(--sub);white-space:nowrap}
+.exrow{display:grid;grid-template-columns:1fr 150px auto;gap:6px;margin:6px 0}
+.tasks{margin:0 0 8px 8px;font-size:13px}
+.empty{text-align:center;color:var(--sub);padding:18px 8px}
+.ring{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.ring .big{font-size:20px;font-weight:700}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+.toast.on{opacity:.95}
+.hbar{display:flex;align-items:center;gap:8px;font-size:13px;margin:4px 0}
+.hbar span:first-child{min-width:70px}
+.hbar .bar{flex:1;height:10px}
+details summary{cursor:pointer;color:var(--sub);font-size:13px}
+</style>
+</head>
+<body>
+<header><div class="hwrap">
+  <div class="top"><h1>📚 テスト勉強プランナー</h1><div class="sync" id="syncSt"></div></div>
+  <nav id="nav">
+    <button data-tab="today">今日</button><button data-tab="plan">計画</button><button data-tab="prog">進度</button><button data-tab="tests">テスト</button><button data-tab="set">設定</button>
+  </nav>
+</div></header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+// ===== 保存 =====
+const LS='test-planner-v1', LS_IDX='test-planner-vault-v1', LS_SYNC='test-planner-sync-v1', LS_TAB='test-planner-tab';
+const PLAN_DIR=['outputs','勉強計画'], DASH='今日のTODO.md';
+const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+function defSettings(){return {weekday:120,holiday:240,noteMin:20,reviewMin:10,finalMin:60,reserve:1,review:[1,3,7],pomo:25,brk:5}}
+let S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},lsGet(LS,{}));
+S.settings=Object.assign(defSettings(),S.settings||{});
+let IDX=Object.assign({vault:null,notes:[],sources:[],cited:[],outputs:[],at:0},lsGet(LS_IDX,{}));
+let SYNC=lsGet(LS_SYNC,{});
+const save=()=>{lsSet(LS,S);scheduleSync()};
+
+// ===== 日付 =====
+const pad=n=>String(n).padStart(2,'0');
+const ds=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today=()=>ds(new Date());
+const pD=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addD=(s,n)=>{const d=pD(s);d.setDate(d.getDate()+n);return ds(d)};
+const diffD=(a,b)=>Math.round((pD(b)-pD(a))/864e5);
+const WD='日月火水木金土';
+const fmtD=s=>{const d=pD(s);return `${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]})`};
+const isHoliday=s=>{const w=pD(s).getDay();return w===0||w===6};
+const capOf=s=>S.dayCap[s]!=null?S.dayCap[s]:(isHoliday(s)?S.settings.holiday:S.settings.weekday);
+
+// ===== 小物 =====
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(16)};
+const PAL=['#5b6cff','#e0567a','#1f9d6b','#e08a00','#8e5bd6','#0f9bb5','#c9573a','#6f8f1f','#d04fb0','#4a7fb5'];
+const colorOf=s=>PAL[parseInt(hash(s||''),16)%PAL.length];
+const sdot=s=>`<span class="sd" style="background:${colorOf(s)}"></span>`;
+const blocks=(r,n=10)=>'■'.repeat(Math.round(r*n))+'□'.repeat(n-Math.round(r*n));
+const pct=(a,b)=>b?Math.round(a/b*100):0;
+const stripLinks=s=>String(s||'').replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g,'$2').replace(/\[\[([^\]]+)\]\]/g,'$1').replace(/[*`]/g,'');
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1800)}
+const obLink=path=>IDX.vault?`obsidian://open?vault=${encodeURIComponent(IDX.vault)}&file=${encodeURIComponent(path.replace(/\.md$/,''))}`:null;
+
+// ===== 範囲（単元）の組み立て =====
+const GROUP_DIRS=['高校生の授業'];
+function srcParts(p){let a=p.split('/');if(a[0]==='sources')a=a.slice(1);if(GROUP_DIRS.includes(a[0]))a=a.slice(1);return a}
+function srcMatch(p,subj,per){const a=srcParts(p);if(a.length<3)return false;return (a[0]===subj||a[0].startsWith(subj))&&(a[1]===per||a[1].endsWith(per))}
+function isDone(k){return !!(S.done[k]&&S.done[k].d)}
+function setDone(k,v,date){const st=S.done[k]||{rv:[]};S.done[k]={d:v?(date||today()):null,rv:v?(st.rv||[]):[],up:Date.now()}}
+function examUnits(test,ex){
+  const st=S.settings,per=test.period,us=[];
+  for(const n of IDX.notes){
+    if(n.subject!==ex.subject)continue;
+    if(n.period===per||n.sources.some(p=>srcMatch(p,ex.subject,per)))
+      us.push({key:'n:'+n.name,kind:'note',title:n.name,note:n,min:st.noteMin,pri:n.asked?1:0});
+  }
+  us.sort((a,b)=>b.pri-a.pri||a.title.localeCompare(b.title,'ja'));
+  for(const t of S.tasks.filter(t=>t.examId===ex.id))us.push({key:'t:'+t.id,kind:'task',title:t.title,min:t.min,task:t});
+  const tp=`${ex.subject}_${per}_対策.md`;
+  if(IDX.outputs.includes(tp))us.push({key:'p:'+ex.id,kind:'taisaku',title:'対策プリントで総チェック',min:40,path:'outputs/'+tp});
+  return us;
+}
+function unprocessed(subj,per){const c=new Set(IDX.cited);return IDX.sources.filter(p=>srcMatch(p,subj,per)&&!c.has(p))}
+function allExams(){const r=[];for(const t of S.tests)for(const ex of t.exams)if(ex.subject&&ex.date)r.push({test:t,ex});return r}
+
+// ===== 計画づくり（逆算） =====
+function buildPlan(){
+  const t=today(),st=S.settings;
+  const exams=allExams().filter(E=>E.ex.date>=t).map(E=>{
+    const units=examUnits(E.test,E.ex);
+    let dl=addD(E.ex.date,-1-st.reserve);if(dl<t)dl=t;
+    return {...E,units,pending:units.filter(u=>!isDone(u.key)),deadline:dl,finalDay:st.reserve>0?addD(E.ex.date,-1):null,over:[]};
+  });
+  // 今日の復習
+  const reviews=[],seen=new Set();
+  for(const E of exams){if(E.ex.date<=t)continue;
+    for(const u of E.units){if(u.kind!=='note'||seen.has(u.key))continue;const s=S.done[u.key];if(!s||!s.d)continue;
+      const rv=s.rv||[];
+      if(rv.includes(t)){seen.add(u.key);reviews.push({...u,kind:'review',key:'r:'+u.title,min:st.reviewMin,E,done:true});continue}
+      if(rv.length>=st.review.length)continue;
+      const base=rv.length?rv[rv.length-1]:s.d,due=addD(base,st.review[rv.length]);
+      if(due<=t){seen.add(u.key);reviews.push({...u,kind:'review',key:'r:'+u.title,min:st.reviewMin,E,done:false,late:due<t})}
+    }}
+  let last=t;for(const E of exams){if(E.deadline>last)last=E.deadline;if(E.finalDay&&E.finalDay>last)last=E.finalDay}
+  const score=(E,d)=>E.pending.reduce((a,u)=>a+u.min,0)/(diffD(d,E.deadline)+1);
+  const days=[];
+  for(let d=t;d<=last;d=addD(d,1)){
+    const day={date:d,cap:capOf(d),items:[]};
+    if(d===t){
+      for(const E of exams)for(const u of E.units)if(S.done[u.key]&&S.done[u.key].d===t)day.items.push({...u,E,done:true});
+      day.items.push(...reviews);
+    }
+    for(const E of exams)if(E.finalDay===d&&d>=t)day.items.push({kind:'final',key:'f:'+E.ex.id,title:'テスト前日の総復習',min:st.finalMin,E,done:isDone('f:'+E.ex.id)});
+    day.free=day.cap-day.items.reduce((a,i)=>a+i.min,0);
+    days.push(day);
+  }
+  // ① 後ろから詰める（できるだけ遅く）→ 各日に「最低これだけは必要」な量を求める
+  exams.forEach(E=>{E.need={};E.left=[...E.pending]});
+  for(let i=days.length-1;i>=0;i--){
+    const d=days[i].date;let c=days[i].free;
+    while(c>0){
+      const el=exams.filter(E=>E.left.length&&E.deadline>=d);if(!el.length)break;
+      el.sort((a,b)=>b.left.reduce((s,u)=>s+u.min,0)-a.left.reduce((s,u)=>s+u.min,0));
+      const E=el[0],u=E.left.pop();E.need[d]=(E.need[d]||0)+1;c-=u.min;
+    }
+  }
+  // ② 前から割り振る：必要な分を先に入れ、余った時間は教科のバランスで埋める
+  exams.forEach(E=>{E.req=0;E.got=0});
+  for(const day of days){
+    const d=day.date;let free=day.free;
+    const put=(E,over)=>{const u=E.pending.shift();E.got++;day.items.push({...u,E,done:false,over});free-=u.min};
+    for(const E of exams){E.req+=E.need[d]||0;while(E.got<E.req&&E.pending.length>E.left.length)put(E,false)}
+    for(;;){
+      if(free<=0)break;
+      const c=exams.filter(E=>E.pending.length>E.left.length&&E.deadline>=d);if(!c.length)break;
+      c.sort((a,b)=>score(b,d)-score(a,d));put(c[0],false);
+    }
+    for(const E of exams)if(E.deadline===d)while(E.pending.length){E.over.push(E.pending[0]);put(E,true)}
+    day.load=day.items.reduce((a,i)=>a+i.min,0);
+  }
+  return {days,exams,reviews};
+}
+function claudeActions(){
+  const t=today(),out=[];
+  for(const {test,ex} of allExams()){if(ex.date<t)continue;
+    const un=unprocessed(ex.subject,test.period).length;
+    if(un)out.push({cmd:`Ingest ${ex.subject} ${test.period}`,why:`未処理のプリント・ノートが ${un}件（ノート化すると範囲に入ります）`});
+    const left=diffD(t,ex.date);
+    if(left<=7&&IDX.vault&&!IDX.outputs.includes(`${ex.subject}_${test.period}_対策.md`))out.push({cmd:`対策 ${ex.subject} ${test.period}`,why:`テストまであと${left}日。対策プリントを作ると総チェック用に計画へ入ります`});
+  }
+  return out;
+}
+
+// ===== Obsidian（フォルダ連携） =====
+const FS_OK='showDirectoryPicker' in window;
+let vault=null,syncing=false,syncMsg='',syncT=null;
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('test-planner-db',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function idbGet(k){const db=await idb();return new Promise(r=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}
+async function idbSet(k,v){const db=await idb();return new Promise(r=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>r()})}
+async function perm(ask){if(!vault)return false;const o={mode:'readwrite'};try{if(await vault.queryPermission(o)==='granted')return true;if(ask)return await vault.requestPermission(o)==='granted'}catch{}return false}
+async function getDir(root,parts,create){let d=root;for(const p of parts)d=await d.getDirectoryHandle(p,{create:!!create});return d}
+async function walk(dir,prefix,out){for await(const [name,h] of dir.entries()){if(name.startsWith('.'))continue;const p=prefix+'/'+name;if(h.kind==='directory')await walk(h,p,out);else out.push([p,h])}}
+async function readText(dir,name){try{return await (await (await dir.getFileHandle(name)).getFile()).text()}catch{return null}}
+async function writeText(dir,name,text){const h=await dir.getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(text);await w.close()}
+
+function parseFront(text){
+  const fm={};if(!text.startsWith('---'))return fm;
+  const end=text.indexOf('\n---',3);if(end<0)return fm;
+  let last=null;
+  for(const line of text.slice(3,end).split('\n')){
+    const li=line.match(/^\s+-\s+(.+)$/);
+    if(li&&last){if(!Array.isArray(fm[last]))fm[last]=[];fm[last].push(li[1].trim().replace(/^["']|["']$/g,''));continue}
+    const kv=line.match(/^([^:\s][^:]*):\s*(.*)$/);
+    if(kv){last=kv[1].trim();fm[last]=kv[2].trim().replace(/^["']|["']$/g,'')}
+  }
+  return fm;
+}
+function section(text,title){const re=new RegExp('^##\\s+'+title+'\\s*$','m');const m=re.exec(text);if(!m)return '';const rest=text.slice(m.index+m[0].length);const n=rest.search(/^##\s/m);return (n<0?rest:rest.slice(0,n)).trim()}
+const blank=s=>!s||/^(なし|無し|-|ー)?$/.test(s.trim());
+function parseNote(path,text){
+  text=text.replace(/\r\n/g,'\n');const fm=parseFront(text);
+  if(!fm['教科']||fm['種別']==='MOC'||/MOC$/.test(path.replace(/\.md$/,'')))return null;
+  const name=path.split('/').pop().replace(/\.md$/,'');
+  const src=Array.isArray(fm['出典'])?fm['出典']:(fm['出典']?[fm['出典']]:[]);
+  return {name,path,subject:fm['教科'],period:fm['時期']||'',summary:stripLinks(section(text,'一言で').split('\n')[0]).slice(0,90),hard:!blank(section(text,'つまずきやすい点')),asked:!blank(section(text,'出題実績')),sources:src};
+}
+const fileCache=new Map();
+async function scanVault(){
+  const wiki=[],src=[],notes=[],cited=new Set();
+  try{await walk(await getDir(vault,['wiki']),'wiki',wiki)}catch{}
+  for(const [p,h] of wiki){if(!p.endsWith('.md'))continue;
+    const f=await h.getFile();let c=fileCache.get(p);
+    if(!c||c.lm!==f.lastModified){c={lm:f.lastModified,note:parseNote(p,await f.text())};fileCache.set(p,c)}
+    if(c.note){notes.push(c.note);c.note.sources.forEach(x=>cited.add(x))}
+  }
+  try{await walk(await getDir(vault,['sources']),'sources',src)}catch{}
+  const outputs=[];try{for await(const [n,h] of (await getDir(vault,['outputs'])).entries())if(h.kind==='file')outputs.push(n)}catch{}
+  IDX={vault:vault.name,notes,sources:src.map(x=>x[0]),cited:[...cited],outputs,at:Date.now()};
+  lsSet(LS_IDX,IDX);
+}
+const testFile=t=>(t.name||'テスト').replace(/[\\/:*?"<>|#^[\]]/g,'_')+'.md';
+
+function applyCheck(key,checked,at){
+  const t=today();
+  if(key.startsWith('r:')){const s=S.done['n:'+key.slice(2)];if(!s||!s.d)return;s.rv=s.rv||[];
+    if(checked&&!s.rv.includes(t)){s.rv.push(t);s.up=Date.now()}
+    else if(!checked&&s.rv.includes(t)&&s.up<=at){s.rv=s.rv.filter(x=>x!==t);s.up=Date.now()}
+    return}
+  if(key.startsWith('t:')&&!S.tasks.some(x=>x.id===key.slice(2)))return;
+  const s=S.done[key];if(!!(s&&s.d)===checked)return;
+  if(s&&s.up>at)return; // アプリ側で後から変えた方を優先
+  setDone(key,checked);
+}
+function importMd(text,at,test){
+  let subj=null,inToday=!!test;
+  for(const line of text.replace(/\r\n/g,'\n').split('\n')){
+    const h=line.match(/^##\s+(.+)$/);
+    if(h){if(test)subj=h[1].split(' — ')[0].trim();else inToday=h[1].includes('今日やること');continue}
+    if(!inToday)continue;
+    const cb=line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/);if(!cb)continue;
+    const checked=cb[1]!==' ',body=cb[2];
+    const km=body.match(/%%\s*([a-z]:[^%]+?)\s*%%/),lm=body.match(/\[\[([^\]|#]+)/);
+    if(km)applyCheck(km[1],checked,at);
+    else if(lm)applyCheck((body.includes('🔁')?'r:':'n:')+lm[1].trim(),checked,at);
+    else if(test&&subj){ // Obsidianで書き足したやること → タスクとして取り込む
+      const ex=test.exams.find(e=>e.subject===subj);if(!ex)continue;
+      const mm=body.match(/⏱\s*(\d+)/),title=body.replace(/⏱\s*\d+\s*分?/,'').trim();if(!title)continue;
+      const task={id:uid(),examId:ex.id,title,min:mm?+mm[1]:30};S.tasks.push(task);if(checked)setDone('t:'+task.id,true);
+    }
+  }
+}
+function itemMd(i,withSubj){
+  const sj=withSubj&&i.E?i.E.ex.subject+'｜':'';
+  const mn=` ⏱${i.min}`;
+  switch(i.kind){
+    case 'note':return `${sj}[[${i.title}]]${mn}`;
+    case 'review':return `🔁 復習｜${sj}[[${i.title}]]${mn}`;
+    case 'task':return `📝 ${sj}${i.title}${mn} %%${i.key}%%`;
+    case 'taisaku':return `📄 ${sj}[[${i.path.split('/').pop().replace(/\.md$/,'')}|対策プリント]]で総チェック${mn} %%${i.key}%%`;
+    case 'final':return `🧠 ${sj}テスト前日の総復習${mn} %%${i.key}%%`;
+  }
+}
+function renderTestMd(test){
+  const t=today(),L=[`---`,`種別: 勉強計画`,`テスト: ${test.name}`,`時期: ${test.period}`,`更新: ${t}`,`---`,``,`# 📚 ${test.name} 進度表`,``,
+  `> [!info] テスト勉強プランナーが自動で書き換えるファイルです`,`> チェックの付け外しはアプリに反映されます。教科の見出しの下に \`- [ ] ワーク p.30-45 ⏱40\` のように書き足すと、やることとして取り込まれます。それ以外の書き込みは次の同期で消えます。`,``];
+  let all=0,dn=0;const secs=[];
+  for(const ex of [...test.exams].filter(e=>e.subject).sort((a,b)=>(a.date||'').localeCompare(b.date||''))){
+    const us=examUnits(test,ex),d=us.filter(u=>isDone(u.key)).length;all+=us.length;dn+=d;
+    const left=ex.date?diffD(t,ex.date):null;
+    const s=[`## ${ex.subject} — ${ex.date?fmtD(ex.date):'日付未定'}`,`進度 ${blocks(us.length?d/us.length:0)} ${pct(d,us.length)}%（${d}/${us.length}）${left!=null&&left>=0?` · あと${left}日`:''}`];
+    const un=unprocessed(ex.subject,test.period).length;if(un)s.push(`> ⚠ ノート化していないソースが ${un}件あります → Claudeに \`Ingest ${ex.subject} ${test.period}\``);
+    s.push('');
+    for(const u of us){const sm=u.kind==='note'&&u.note.summary?` — ${u.note.summary.replace(/%%/g,'')}`:'';s.push(`- [${isDone(u.key)?'x':' '}] ${u.kind==='note'?`[[${u.title}]]${u.note.asked?' ⭐':''}${sm}`:itemMd(u)}`)}
+    if(!us.length)s.push('（まだノートがありません）');
+    secs.push(s.join('\n'));
+  }
+  L.push(`全体 ${blocks(all?dn/all:0)} ${pct(dn,all)}%（${dn}/${all}）　⭐=過去に出題されたもの（優先して計画に入れます）`,'',secs.join('\n\n'),'');
+  return L.join('\n');
+}
+function renderDashMd(P){
+  const t=today(),td=P.days[0]||{items:[],load:0},dm=td.items.filter(i=>i.done).reduce((a,i)=>a+i.min,0);
+  const L=[`---`,`種別: 勉強計画`,`更新: ${t}`,`---`,``,`# 📅 今日のTODO（${fmtD(t)}）`,``,
+  `> [!info] テスト勉強プランナーが自動で書き換えるファイルです`,`> 「今日やること」にチェックを付けるとアプリにも反映されます。`,``,`## ⏳ テストまで`,``,`| 教科 | テスト | 日付 | あと | 進度 |`,`|---|---|---|---|---|`];
+  for(const E of [...P.exams].sort((a,b)=>a.ex.date.localeCompare(b.ex.date))){const d=E.units.filter(u=>isDone(u.key)).length;L.push(`| ${E.ex.subject} | [[${testFile(E.test).replace(/\.md$/,'')}\\|${E.test.name}]] | ${fmtD(E.ex.date)} | ${diffD(t,E.ex.date)}日 | ${pct(d,E.units.length)}%（${d}/${E.units.length}） |`)}
+  if(!P.exams.length)L.push('| — | 登録なし | | | |');
+  L.push('',`## ✅ 今日やること（予定 ${td.load}分 / 完了 ${dm}分）`,'');
+  for(const i of td.items)L.push(`- [${i.done?'x':' '}] ${itemMd(i,true)}${i.over?' ⚠詰め込み':''}`);
+  if(!td.items.length)L.push('今日の予定はありません 🎉');
+  const acts=claudeActions();
+  if(acts.length){L.push('','## 🤖 Claudeに頼むこと','');acts.forEach(a=>L.push(`- \`${a.cmd}\` — ${a.why}`))}
+  L.push('','## 🗓 これからの予定','');
+  for(const d of P.days.slice(1,8)){if(!d.items.length)continue;L.push(`**${fmtD(d.date)}**（${d.load}分）`);d.items.forEach(i=>L.push(`- ${itemMd(i,true).replace(/ %%.*%%/,'')}`));L.push('')}
+  return L.join('\n');
+}
+async function syncNow(ask){
+  if(syncing||!vault)return;
+  if(!await perm(ask)){syncMsg='要再接続';renderSync();return}
+  syncing=true;syncMsg='同期中…';renderSync();
+  try{
+    await scanVault();
+    const dir=await getDir(vault,PLAN_DIR,true);
+    const files=[[DASH,null],...S.tests.map(t=>[testFile(t),t])];
+    for(const [name,t] of files){const txt=await readText(dir,name);if(txt==null)continue;const m=SYNC[name];if(m&&m.hash===hash(txt))continue;importMd(txt,m?m.at:0,t)}
+    lsSet(LS,S);
+    const P=buildPlan();
+    for(const [name,t] of files){const md=t?renderTestMd(t):renderDashMd(P);const cur=await readText(dir,name);if(cur!==md)await writeText(dir,name,md);SYNC[name]={hash:hash(md),at:Date.now()}}
+    lsSet(LS_SYNC,SYNC);
+    const n=new Date();syncMsg=`同期 ${pad(n.getHours())}:${pad(n.getMinutes())}`;
+  }catch(e){console.error(e);syncMsg='同期エラー';toast('同期に失敗: '+e.message)}
+  syncing=false;render();
+}
+function scheduleSync(){if(!vault)return;clearTimeout(syncT);syncT=setTimeout(()=>syncNow(false),1500)}
+async function connectVault(){
+  try{const h=await showDirectoryPicker({id:'obsidian-vault',mode:'readwrite'});
+    let ok=true;try{await h.getDirectoryHandle('wiki')}catch{ok=false}
+    if(!ok&&!confirm(`「${h.name}」に wiki フォルダが見つかりません。このまま連携しますか？\n（second brain フォルダを選んでください）`))return;
+    vault=h;await idbSet('vault',h);SYNC={};lsSet(LS_SYNC,SYNC);await syncNow(true);toast(`「${h.name}」と連携しました`);
+  }catch(e){if(e.name!=='AbortError')toast('連携できませんでした: '+e.message)}
+}
+
+// ===== タイマー =====
+const TM={mode:'work',end:0,left:null,run:false,subj:''};
+function tmTotal(){return (TM.mode==='work'?S.settings.pomo:S.settings.brk)*60}
+function tmLeft(){return TM.run?Math.max(0,Math.round((TM.end-Date.now())/1000)):(TM.left??tmTotal())}
+function logStudy(min){if(min<1)return;S.logs.push({date:today(),subject:TM.subj||'その他',min});save()}
+function beep(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(a.currentTime+.5)}catch{}}
+setInterval(()=>{
+  if(!TM.run)return;const l=tmLeft();
+  const c=$('#clock');if(c)c.textContent=`${pad(Math.floor(l/60))}:${pad(l%60)}`;
+  document.title=`${pad(Math.floor(l/60))}:${pad(l%60)} ${TM.mode==='work'?'集中':'休憩'}`;
+  if(l<=0){TM.run=false;beep();
+    if(TM.mode==='work'){logStudy(S.settings.pomo);TM.mode='break';toast(`${S.settings.pomo}分記録しました。休憩しよう`)}else{TM.mode='work';toast('休憩終わり！')}
+    TM.left=null;document.title='テスト勉強プランナー';render()}
+},500);
+
+// ===== 画面 =====
+let TAB=lsGet(LS_TAB,'today');const OPEN=new Set();
+function renderSync(){
+  const el=$('#syncSt');
+  if(!FS_OK){el.innerHTML='<span class="dot"></span>Obsidian連携はPC版Chrome/Edgeのみ';return}
+  if(!vault){el.innerHTML='<span class="dot off"></span>Obsidian未連携';return}
+  el.innerHTML=`<span class="dot ${syncMsg==='要再接続'||syncMsg==='同期エラー'?'off':'on'}"></span>${esc(IDX.vault||vault.name)} · ${esc(syncMsg)} <button class="btn sm" data-act="sync">${syncMsg==='要再接続'?'再接続':'同期'}</button>`;
+}
+function itemHtml(i,opts={}){
+  const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠'}[k];
+  const link=k==='note'||k==='review'?obLink(i.note.path):k==='taisaku'?obLink(i.path):null;
+  const tags=[];if(i.over)tags.push('<span class="tag over">詰め込み</span>');if(i.late)tags.push('<span class="tag w">遅れ</span>');
+  if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
+  const sub=i.note&&i.note.summary?esc(i.note.summary):'';
+  return `<div class="item ${i.done?'done':''}"><input type="checkbox" ${i.done?'checked':''} ${opts.nocheck?'disabled':''} data-act="chk" data-key="${esc(i.key)}">
+  <div class="b"><div class="t">${ic} ${i.E&&opts.subj!==false?sdot(i.E.ex.subject)+`<span class="muted">${esc(i.E.ex.subject)}</span> `:''}${k==='review'?'復習：':''}${esc(i.title)} ${tags.join('')}</div>${sub?`<div class="m">${sub}</div>`:''}</div>
+  <div style="text-align:right"><div class="min">${i.min}分</div>${link?`<a class="ob" href="${link}">Obsidian↗</a>`:''}</div></div>`;
+}
+function vTodayTab(P){
+  const t=today(),td=P.days[0]||{items:[],load:0,cap:capOf(t)};
+  const dm=td.items.filter(i=>i.done).reduce((a,i)=>a+i.min,0);
+  const studied=S.logs.filter(l=>l.date===t).reduce((a,l)=>a+l.min,0);
+  let h='';
+  if(!S.tests.length)h+=`<div class="card"><h2>はじめに</h2><ol style="margin:0;padding-left:20px">
+    <li>${vault?'✅ Obsidianと連携済み':`<a href="#" data-act="goto" data-tab="set">設定</a>で Obsidian の「second brain」フォルダを連携`}</li>
+    <li><a href="#" data-act="goto" data-tab="tests">テスト</a>タブでテストの日程を登録</li>
+    <li>毎日このページ（またはObsidianの <code>outputs/勉強計画/今日のTODO</code>）を開いて、上から片付ける</li></ol></div>`;
+  const ch=[...P.exams].sort((a,b)=>a.ex.date.localeCompare(b.ex.date));
+  if(ch.length)h+=`<div class="chips" style="margin-bottom:12px">${ch.map(E=>{const d=E.units.filter(u=>isDone(u.key)).length,l=diffD(t,E.ex.date);return `<div class="chip" style="border-top:3px solid ${colorOf(E.ex.subject)}"><div class="s">${esc(E.ex.subject)} · ${fmtD(E.ex.date)}</div><div class="d">${l===0?'今日':l}<small>${l===0?'':'日'}</small></div><div class="bar"><i style="width:${pct(d,E.units.length)}%;background:${colorOf(E.ex.subject)}"></i></div><div class="s">${pct(d,E.units.length)}%（${d}/${E.units.length}）</div></div>`}).join('')}</div>`;
+  const overs=P.exams.filter(E=>E.over.length);
+  if(overs.length){const om=overs.reduce((a,E)=>a+E.over.reduce((s,u)=>s+u.min,0),0),per=Math.ceil(om/Math.max(1,P.days.length-1)/10)*10;
+    h+=`<div class="alert w">⚠ ${overs.map(E=>`${esc(E.ex.subject)}（${E.over.length}件）`).join('、')}が予定時間内に収まっていません（あと約${om}分）。1日あたり約${per}分増やすと収まります。<a href="#" data-act="goto" data-tab="set">設定</a>や<a href="#" data-act="goto" data-tab="plan">計画</a>で時間を調整しよう。</div>`}
+  const acts=claudeActions();
+  if(acts.length)h+=`<div class="card"><h2>🤖 Claudeに頼むこと</h2>${acts.map(a=>`<div class="cmd"><code>${esc(a.cmd)}</code><button class="btn sm" data-act="copy" data-text="${esc(a.cmd)}">コピー</button></div><div class="muted" style="margin:-2px 0 4px">${esc(a.why)}</div>`).join('')}</div>`;
+  h+=`<div class="grid2"><div class="card" style="grid-column:1/-1"><h2>✅ 今日やること<span class="r">${fmtD(t)}</span></h2>
+    <div class="ring"><div class="big">${dm}<span class="muted"> / ${td.load}分</span></div><div class="bar" style="flex:1"><i style="width:${Math.min(100,pct(dm,td.load))}%"></i></div><span class="muted">使える時間 ${td.cap}分</span></div>
+    ${td.items.length?td.items.map(i=>itemHtml(i)).join(''):`<div class="empty">${P.exams.length?'今日の予定はありません 🎉':'テストを登録すると、ここにやることが並びます'}</div>`}</div></div>`;
+  const subs=[...new Set(P.exams.map(E=>E.ex.subject))];
+  const l=tmLeft();
+  h+=`<div class="card timer"><h2>⏱ 集中タイマー<span class="r">今日 ${studied}分</span></h2>
+    <div class="row" style="justify-content:center"><select data-act="tmsubj"><option value="">教科を選ぶ</option>${subs.map(s=>`<option ${TM.subj===s?'selected':''}>${esc(s)}</option>`).join('')}<option ${TM.subj==='その他'?'selected':''}>その他</option></select><span class="tag ${TM.mode==='work'?'':'w'}">${TM.mode==='work'?'集中':'休憩'}</span></div>
+    <div class="clock" id="clock">${pad(Math.floor(l/60))}:${pad(l%60)}</div>
+    <div class="row" style="justify-content:center"><button class="btn pri" data-act="tm">${TM.run?'一時停止':'スタート'}</button><button class="btn" data-act="tmreset">リセット</button>${TM.mode==='work'&&TM.left!=null&&!TM.run&&tmTotal()-l>=60?`<button class="btn" data-act="tmlog">${Math.floor((tmTotal()-l)/60)}分を記録</button>`:''}</div></div>`;
+  return h;
+}
+function vPlan(P){
+  if(!P.days.length)return `<div class="card empty">テストを登録すると、テスト日から逆算した毎日の予定がここに出ます。</div>`;
+  let h=`<div class="card"><h2>🗓 テストまでの予定</h2><div class="muted" style="margin-bottom:6px">残っている範囲を、テストが近い教科・量が多い教科から優先して毎日に割り振っています。終わらなかった分は翌日以降に自動で組み直します。前日は総復習の日です。「使える時間」を押すと、その日だけ変更できます。</div>`;
+  for(const d of P.days){
+    const r=d.cap?Math.min(1,d.load/d.cap):1,ov=d.load>d.cap;
+    h+=`<div class="day"><div class="dh"><b>${fmtD(d.date)}${d.date===today()?' 今日':''}</b><div class="bar"><i style="width:${r*100}%;${ov?'background:var(--warn)':''}"></i></div><button class="btn sm" data-act="cap" data-date="${d.date}">${d.load}/${d.cap}分${S.dayCap[d.date]!=null?' ✎':''}</button></div>
+    <div class="dl">${d.items.map(i=>`<div>${i.done?'✔︎':'・'} ${i.E?sdot(i.E.ex.subject):''}${{note:'',review:'🔁 ',task:'📝 ',taisaku:'📄 ',final:'🧠 '}[i.kind]}${esc(i.title)} <span class="muted">${i.min}分</span>${i.over?' <span class="tag over">詰め込み</span>':''}</div>`).join('')||'<span class="muted">予定なし</span>'}</div></div>`;
+  }
+  return h+'</div>';
+}
+function vProg(P){
+  const t=today();let h='';
+  if(!S.tests.length)return `<div class="card empty">テストを登録すると、教科ごとの進度がここに出ます。</div>`;
+  if(!IDX.notes.length)h+=`<div class="alert w">Obsidianのノートがまだ読み込まれていません。<a href="#" data-act="goto" data-tab="set">設定</a>から連携してください。</div>`;
+  for(const test of [...S.tests].reverse()){
+    const exs=test.exams.filter(e=>e.subject).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
+    let all=0,dn=0;const rows=exs.map(ex=>{const us=examUnits(test,ex),d=us.filter(u=>isDone(u.key)).length;all+=us.length;dn+=d;return {ex,us,d}});
+    h+=`<div class="card"><h2>${esc(test.name)} <span class="muted">${esc(test.period)}</span><span class="r">全体 ${pct(dn,all)}%（${dn}/${all}）</span></h2>`;
+    for(const {ex,us,d} of rows){
+      const E=P.exams.find(x=>x.ex.id===ex.id),left=ex.date?diffD(t,ex.date):null,un=unprocessed(ex.subject,test.period).length,op=OPEN.has(ex.id);
+      const rem=us.filter(u=>!isDone(u.key)).reduce((a,u)=>a+u.min,0);
+      let pace='';
+      if(left!=null&&left<0)pace='<span class="muted">終了</span>';
+      else if(E&&E.over.length)pace=`<span class="tag over">⚠ ${E.over.length}件あふれそう</span>`;
+      else if(us.length&&d===us.length)pace='<span class="tag">✓ 完了</span>';
+      else if(E)pace=`<span class="muted">残り${rem}分 · 1日あたり約${Math.ceil(rem/Math.max(1,diffD(t,E.deadline)+1))}分</span>`;
+      h+=`<div class="subj"><div class="sh" data-act="open" data-id="${ex.id}"><span class="n">${sdot(ex.subject)}${esc(ex.subject)}</span><div class="bar"><i style="width:${pct(d,us.length)}%;background:${colorOf(ex.subject)}"></i></div><span class="p">${pct(d,us.length)}%（${d}/${us.length}）${ex.date?` · ${fmtD(ex.date)}${left>=0?` あと${left}日`:''}`:''} ${op?'▲':'▼'}</span></div>
+      <div style="margin:4px 0 0 20px">${pace}${un?` <span class="tag w">未ノート化 ${un}件</span>`:''}</div>
+      ${op?`<div style="margin-top:6px">${us.map(u=>itemHtml({...u,done:isDone(u.key)},{subj:false})).join('')||'<div class="muted">この教科・時期のノートがありません</div>'}</div>`:''}</div>`;
+    }
+    h+='</div>';
+  }
+  const since=addD(t,-6),by={};S.logs.filter(l=>l.date>=since).forEach(l=>by[l.subject]=(by[l.subject]||0)+l.min);
+  const mx=Math.max(1,...Object.values(by));
+  h+=`<div class="card"><h2>⏱ この7日の勉強時間<span class="r">${Object.values(by).reduce((a,b)=>a+b,0)}分</span></h2>${Object.keys(by).length?Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([s,m])=>`<div class="hbar"><span>${sdot(s)}${esc(s)}</span><div class="bar"><i style="width:${m/mx*100}%;background:${colorOf(s)}"></i></div><span>${m}分</span></div>`).join(''):'<div class="muted">集中タイマーを使うと記録されます</div>'}</div>`;
+  return h;
+}
+function periods(){const s=new Set(IDX.notes.map(n=>n.period).filter(Boolean));return [...s].sort()}
+function subjectsFor(per){const s=new Set();IDX.notes.forEach(n=>{if(!per||n.period===per)s.add(n.subject)});return [...s].sort((a,b)=>a.localeCompare(b,'ja'))}
+function vTests(){
+  let h=`<datalist id="dlPer">${periods().map(p=>`<option value="${esc(p)}">`).join('')}</datalist><datalist id="dlSub">${subjectsFor().map(p=>`<option value="${esc(p)}">`).join('')}</datalist>`;
+  h+=`<div class="row" style="margin-bottom:12px"><button class="btn pri" data-act="addtest">＋ テストを追加</button><span class="muted">「時期」はObsidianのノートの <code>時期:</code> と同じ名前にすると、その範囲のノートが自動で入ります</span></div>`;
+  if(!S.tests.length)h+=`<div class="card empty">まだテストがありません</div>`;
+  for(const test of [...S.tests].reverse()){
+    h+=`<div class="card"><div class="row"><input style="flex:1;font-weight:600" value="${esc(test.name)}" data-act="tname" data-id="${test.id}" placeholder="テスト名"><label>時期</label><input list="dlPer" style="width:130px" value="${esc(test.period)}" data-act="tper" data-id="${test.id}"><button class="btn sm" data-act="deltest" data-id="${test.id}">削除</button></div>
+    <div class="muted" style="margin-top:8px">教科と日付</div>`;
+    for(const ex of test.exams){
+      const n=IDX.notes.length?examUnits(test,ex).filter(u=>u.kind==='note').length:null;
+      h+=`<div class="exrow"><input list="dlSub" value="${esc(ex.subject)}" placeholder="教科" data-act="exsub" data-t="${test.id}" data-id="${ex.id}"><input type="date" value="${esc(ex.date)}" data-act="exdate" data-t="${test.id}" data-id="${ex.id}"><button class="btn sm" data-act="delex" data-t="${test.id}" data-id="${ex.id}">×</button></div>
+      <div class="tasks">${n!=null&&ex.subject?`<span class="muted">範囲のノート ${n}件</span>`:''}
+        ${S.tasks.filter(x=>x.examId===ex.id).map(x=>`<div>📝 ${esc(x.title)} <span class="muted">${x.min}分</span> <a href="#" data-act="deltask" data-id="${x.id}">削除</a></div>`).join('')}
+        ${ex.subject?`<div class="row"><input placeholder="やることを追加（例：ワーク p.30-45）" style="flex:1" data-tin="${ex.id}"><input type="number" value="30" min="5" step="5" data-tmin="${ex.id}" style="width:64px">分<button class="btn sm" data-act="addtask" data-id="${ex.id}">追加</button></div>`:''}</div>`;
+    }
+    h+=`<div class="row"><button class="btn sm" data-act="addex" data-id="${test.id}">＋ 教科を追加</button>${test.period&&subjectsFor(test.period).length?`<button class="btn sm" data-act="addall" data-id="${test.id}">「${esc(test.period)}」のノートがある教科をまとめて追加</button>`:''}</div></div>`;
+  }
+  return h;
+}
+function vSet(){
+  const st=S.settings;
+  const num=(k,l,u='分')=>`<div class="row"><label style="min-width:150px">${l}</label><input type="number" min="0" step="5" value="${st[k]}" data-act="setn" data-k="${k}">${u}</div>`;
+  return `<div class="card"><h2>🔗 Obsidian 連携</h2>
+  ${FS_OK?`<p class="muted" style="margin-top:0">iCloud Drive の <b>second brain</b> フォルダを選んでください。<code>wiki/</code> のノート（教科・時期）を読み取り、進度表と今日のTODOを <code>outputs/勉強計画/</code> に書き出します。<code>sources/</code> と <code>wiki/</code> には書き込みません。</p>
+  <div class="row"><button class="btn pri" data-act="connect">${vault?'別のフォルダに変更':'フォルダを選んで連携'}</button>${vault?`<button class="btn" data-act="sync">今すぐ同期</button>`:''}</div>
+  ${IDX.at?`<div class="muted">読み込み済み：ノート ${IDX.notes.length}件 / ソース ${IDX.sources.length}件（${new Date(IDX.at).toLocaleString('ja-JP')}）</div>`:''}`
+  :`<p class="muted" style="margin-top:0">このブラウザはフォルダ連携に対応していません。PCの Chrome か Edge で開いてください。iPhoneでは Obsidian の <code>outputs/勉強計画/今日のTODO</code> を開いてチェックすれば、PC側で同期したときに反映されます。</p>`}</div>
+  <div class="card"><h2>⏰ 勉強時間</h2>${num('weekday','平日に使える時間')}${num('holiday','土日に使える時間')}${num('noteMin','ノート1つの目安')}${num('reviewMin','復習1回')}${num('finalMin','前日の総復習')}
+  <div class="row"><label style="min-width:150px">総復習にあてる日数</label><input type="number" min="0" max="3" value="${st.reserve}" data-act="setn" data-k="reserve">日（テストの前日から）</div>
+  <div class="row"><label style="min-width:150px">復習のタイミング</label><input value="${st.review.join(',')}" data-act="setrv" style="width:100px">日後（覚えた日から。忘却曲線）</div>
+  <div class="row"><label style="min-width:150px">タイマー</label><input type="number" min="5" value="${st.pomo}" data-act="setn" data-k="pomo">分集中 /<input type="number" min="1" value="${st.brk}" data-act="setn" data-k="brk">分休憩</div></div>
+  <div class="card"><h2>💾 データ</h2><div class="row"><button class="btn" data-act="export">書き出し(JSON)</button><label class="btn">読み込み<input type="file" accept=".json" data-act="import" hidden></label><button class="btn" data-act="reset">全部消す</button></div></div>`;
+}
+function render(){
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('act',b.dataset.tab===TAB));
+  renderSync();
+  const P=buildPlan();
+  $('#main').innerHTML=TAB==='today'?vTodayTab(P):TAB==='plan'?vPlan(P):TAB==='prog'?vProg(P):TAB==='tests'?vTests():vSet();
+}
+
+// ===== 操作 =====
+const findTest=id=>S.tests.find(t=>t.id===id);
+const findEx=(tid,id)=>findTest(tid).exams.find(e=>e.id===id);
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-tab],[data-act]');if(!b)return;
+  if(b.closest('#nav')){TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();return}
+  const a=b.dataset.act,id=b.dataset.id;
+  if(['chk','tmsubj','tname','tper','exsub','exdate','setn','setrv','import'].includes(a))return;
+  e.preventDefault();
+  switch(a){
+    case 'goto':TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();break;
+    case 'sync':syncNow(true);break;
+    case 'connect':connectVault();break;
+    case 'copy':try{await navigator.clipboard.writeText(b.dataset.text);toast('コピーしました。Claudeに貼り付けてね')}catch{prompt('コピーしてください',b.dataset.text)}break;
+    case 'open':OPEN.has(id)?OPEN.delete(id):OPEN.add(id);render();break;
+    case 'cap':{const d=b.dataset.date,v=prompt(`${fmtD(d)} に使える時間（分）\n空欄でいつもの設定に戻します`,capOf(d));if(v===null)return;if(v.trim()==='')delete S.dayCap[d];else if(!isNaN(+v))S.dayCap[d]=Math.max(0,+v);save();render();break}
+    case 'addtest':{const per=periods().includes('二学期中間')?'二学期中間':'';S.tests.push({id:uid(),name:per?per+'テスト':'新しいテスト',period:per,exams:[],up:Date.now()});save();render();break}
+    case 'deltest':if(confirm('このテストを削除しますか？'))S.tests=S.tests.filter(t=>t.id!==id),save(),render();break;
+    case 'addex':findTest(id).exams.push({id:uid(),subject:'',date:''});save();render();break;
+    case 'addall':{const t=findTest(id);for(const s of subjectsFor(t.period))if(!t.exams.some(e=>e.subject===s))t.exams.push({id:uid(),subject:s,date:''});save();render();toast('日付を入れてください');break}
+    case 'delex':{const t=findTest(b.dataset.t);t.exams=t.exams.filter(x=>x.id!==id);save();render();break}
+    case 'addtask':{const i=$(`[data-tin="${id}"]`),m=$(`[data-tmin="${id}"]`);if(!i.value.trim())return;S.tasks.push({id:uid(),examId:id,title:i.value.trim(),min:Math.max(5,+m.value||30)});save();render();break}
+    case 'deltask':S.tasks=S.tasks.filter(x=>x.id!==id);save();render();break;
+    case 'tm':if(TM.run){TM.left=tmLeft();TM.run=false}else{if(TM.mode==='work'&&!TM.subj)toast('教科を選ぶと記録が教科別になります');TM.end=Date.now()+tmLeft()*1000;TM.run=true}render();break;
+    case 'tmreset':TM.run=false;TM.left=null;TM.mode='work';document.title='テスト勉強プランナー';render();break;
+    case 'tmlog':{const m=Math.floor((tmTotal()-tmLeft())/60);logStudy(m);TM.left=null;toast(`${m}分記録しました`);render();break}
+    case 'export':{const u=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));const x=document.createElement('a');x.href=u;x.download=`テスト勉強プランナー_${today()}.json`;x.click();break}
+    case 'reset':if(confirm('テスト・進度・記録をすべて消します。よろしいですか？')){S={tests:[],tasks:[],done:{},logs:[],dayCap:{},settings:defSettings()};save();render()}break;
+  }
+});
+document.addEventListener('change',async e=>{
+  const b=e.target,a=b.dataset.act;if(!a)return;
+  switch(a){
+    case 'chk':{const k=b.dataset.key;
+      if(k.startsWith('r:')){const s=S.done['n:'+k.slice(2)],t=today();if(s){s.rv=s.rv||[];if(b.checked){if(!s.rv.includes(t))s.rv.push(t)}else s.rv=s.rv.filter(x=>x!==t);s.up=Date.now()}}
+      else setDone(k,b.checked);
+      save();if(b.checked)toast('よくできました！');render();break}
+    case 'tmsubj':TM.subj=b.value;break;
+    case 'tname':findTest(b.dataset.id).name=b.value.trim()||'テスト';save();break;
+    case 'tper':findTest(b.dataset.id).period=b.value.trim();save();render();break;
+    case 'exsub':findEx(b.dataset.t,b.dataset.id).subject=b.value.trim();save();render();break;
+    case 'exdate':findEx(b.dataset.t,b.dataset.id).date=b.value;save();render();break;
+    case 'setn':S.settings[b.dataset.k]=Math.max(0,+b.value||0);save();break;
+    case 'setrv':{const v=b.value.split(/[,、\s]+/).map(Number).filter(n=>n>0);if(v.length)S.settings.review=v;save();break}
+    case 'import':{const f=b.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.tests))throw 0;S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},d);S.settings=Object.assign(defSettings(),d.settings||{});save();render();toast('読み込みました')}catch{toast('このファイルは読み込めません')}break}
+  }
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.tin){$(`[data-act="addtask"][data-id="${e.target.dataset.tin}"]`).click()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){render();syncNow(false)}});
+setInterval(()=>{if(!document.hidden&&!TM.run)syncNow(false)},60000);
+
+(async()=>{
+  render();
+  if(FS_OK){try{vault=await idbGet('vault')||null}catch{}if(vault)syncNow(false);else renderSync()}
+})();
+</script>
+</body>
+</html>
