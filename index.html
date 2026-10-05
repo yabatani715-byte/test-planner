@@ -108,7 +108,7 @@ const LS='test-planner-v1', LS_IDX='test-planner-vault-v1', LS_SYNC='test-planne
 const PLAN_DIR=['outputs','勉強計画'], DASH='今日のTODO.md';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-function defSettings(){return {weekday:120,holiday:240,noteMin:20,reviewMin:10,finalMin:60,reserve:1,review:[1,3,7],pomo:25,brk:5}}
+function defSettings(){return {weekday:120,holiday:240,noteMin:20,reviewMin:10,finalMin:60,reserve:1,review:[1,3,7],pomo:25,brk:5,includeOld:false}}
 let S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},lsGet(LS,{}));
 S.settings=Object.assign(defSettings(),S.settings||{});
 let IDX=Object.assign({vault:null,notes:[],sources:[],cited:[],outputs:[],at:0},lsGet(LS_IDX,{}));
@@ -168,10 +168,14 @@ function examUnits(test,ex){
   const st=S.settings,per=test.period,us=[];
   for(const n of IDX.notes){
     if(n.subject!==ex.subject)continue;
-    if(n.period===per||n.sources.some(p=>srcMatch(p,ex.subject,per)))
-      us.push({key:'n:'+n.name,kind:'note',title:n.name,note:n,min:st.noteMin,pri:n.asked?1:0});
+    const mine=n.sources.filter(p=>srcMatch(p,ex.subject,per));
+    const old=n.period!==per;
+    if(old&&!(st.includeOld&&mine.length))continue; // 前の時期のノートは設定がオンのときだけ
+    // 授業の順：その時期の出典ファイル名にある日付（9_14ノート・9月10日…）の早い順
+    const ord=Math.min(9999,...mine.map(p=>{const m=p.split('/').pop().match(/(\d{1,2})[_月\/.-](\d{1,2})/);return m?+m[1]*100+ +m[2]:9998}));
+    us.push({key:'n:'+n.name,kind:'note',title:n.name,note:n,min:st.noteMin,old,ord});
   }
-  us.sort((a,b)=>b.pri-a.pri||a.title.localeCompare(b.title,'ja'));
+  us.sort((a,b)=>(a.old-b.old)||a.ord-b.ord||a.title.localeCompare(b.title,'ja'));
   for(const t of S.tasks.filter(t=>t.examId===ex.id))us.push({key:'t:'+t.id,kind:'task',title:t.title,min:t.min,task:t});
   const tp=`${ex.subject}_${per}_対策.md`;
   if(IDX.outputs.includes(tp))us.push({key:'p:'+ex.id,kind:'taisaku',title:'対策プリントで総チェック',min:40,path:'outputs/'+tp});
@@ -482,7 +486,7 @@ function itemHtml(i,opts={}){
   const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠'}[k];
   const link=k==='note'||k==='review'?obLink(i.note.path):k==='taisaku'?obLink(i.path):null;
   const tags=[];if(i.over)tags.push('<span class="tag over">詰め込み</span>');if(i.late)tags.push('<span class="tag w">遅れ</span>');
-  if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
+  if(i.old)tags.push('<span class="tag w">前の範囲</span>');if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
   const sub=i.note&&i.note.summary?esc(i.note.summary):'';
   return `<div class="item ${i.done?'done':''}"><input type="checkbox" ${i.done?'checked':''} ${opts.nocheck?'disabled':''} data-act="chk" data-key="${esc(i.key)}">
   <div class="b"><div class="t">${ic} ${i.E&&opts.subj!==false?sdot(i.E.ex.subject)+`<span class="muted">${esc(i.E.ex.subject)}</span> `:''}${k==='review'?'復習：':''}${esc(i.title)} ${tags.join('')}</div>${sub?`<div class="m">${sub}</div>`:''}</div>
@@ -594,6 +598,7 @@ function vSet(){
   ${IDX.notes.length?`<div class="muted">読み込み済み：ノート ${IDX.notes.length}件 / ソース ${IDX.sources.length}件（${new Date(IDX.at).toLocaleString('ja-JP')}）</div>`:''}`
   :`<p class="muted" style="margin-top:0">この端末ではObsidianのフォルダを直接読めません。上の「スマホ⇔PC 同期」を設定すると、PCが読み込んだノート一覧とObsidianでのチェックがこの端末にも届きます${IDX.at?`（ノート ${IDX.notes.length}件を受信済み）`:''}。</p>`}</div>
   <div class="card"><h2>⏰ 勉強時間</h2>${num('weekday','平日に使える時間')}${num('holiday','土日に使える時間')}${num('noteMin','ノート1つの目安')}${num('reviewMin','復習1回')}${num('finalMin','前日の総復習')}
+  <div class="row"><label style="min-width:150px">前の時期のノート</label><label style="color:var(--text)"><input type="checkbox" data-act="setb" data-k="includeOld" ${st.includeOld?'checked':''}> 今回のプリントに出てくる前の時期（一学期など）のノートも範囲に入れる</label></div>
   <div class="row"><label style="min-width:150px">総復習にあてる日数</label><input type="number" min="0" max="3" value="${st.reserve}" data-act="setn" data-k="reserve">日（テストの前日から）</div>
   <div class="row"><label style="min-width:150px">復習のタイミング</label><input value="${st.review.join(',')}" data-act="setrv" style="width:100px">日後（覚えた日から。忘却曲線）</div>
   <div class="row"><label style="min-width:150px">タイマー</label><input type="number" min="5" value="${st.pomo}" data-act="setn" data-k="pomo">分集中 /<input type="number" min="1" value="${st.brk}" data-act="setn" data-k="brk">分休憩</div></div>
@@ -613,7 +618,7 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-tab],[data-act]');if(!b)return;
   if(b.closest('#nav')){TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();return}
   const a=b.dataset.act,id=b.dataset.id;
-  if(['chk','tmsubj','tname','tper','exsub','exdate','setn','setrv','import'].includes(a))return;
+  if(['chk','tmsubj','tname','tper','exsub','exdate','setn','setb','setrv','import'].includes(a))return;
   e.preventDefault();
   switch(a){
     case 'goto':TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();break;
@@ -651,6 +656,7 @@ document.addEventListener('change',async e=>{
     case 'exsub':findEx(b.dataset.t,b.dataset.id).subject=b.value.trim();save();render();break;
     case 'exdate':findEx(b.dataset.t,b.dataset.id).date=b.value;save();render();break;
     case 'setn':S.settings[b.dataset.k]=Math.max(0,+b.value||0);save();break;
+    case 'setb':S.settings[b.dataset.k]=b.checked;save();render();break;
     case 'setrv':{const v=b.value.split(/[,、\s]+/).map(Number).filter(n=>n>0);if(v.length)S.settings.review=v;save();break}
     case 'import':{const f=b.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.tests))throw 0;(d.logs||[]).forEach(l=>l.id||(l.id=uid()));S=mergeS(S,d);save();render();toast('読み込みました')}catch{toast('このファイルは読み込めません')}break}
   }
