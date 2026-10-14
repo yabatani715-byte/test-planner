@@ -108,7 +108,7 @@ const LS='test-planner-v1', LS_IDX='test-planner-vault-v1', LS_SYNC='test-planne
 const PLAN_DIR=['outputs','勉強計画'], DASH='今日のTODO.md';
 const lsGet=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-function defSettings(){return {weekday:120,holiday:240,noteMin:20,reviewMin:10,finalMin:60,reserve:1,review:[1,3,7],pomo:25,brk:5,includeOld:false}}
+function defSettings(){return {weekday:120,holiday:240,noteMin:20,reviewMin:10,finalMin:60,reserve:1,review:[1,3,7],pomo:25,brk:5,includeOld:false,drill:true,drillMin:60,fixMin:30,drillRounds:2}}
 let S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},lsGet(LS,{}));
 S.settings=Object.assign(defSettings(),S.settings||{});
 let IDX=Object.assign({vault:null,notes:[],sources:[],cited:[],outputs:[],at:0},lsGet(LS_IDX,{}));
@@ -164,7 +164,10 @@ function srcParts(p){let a=p.split('/');if(a[0]==='sources')a=a.slice(1);if(GROU
 function srcMatch(p,subj,per){const a=srcParts(p);if(a.length<3)return false;return (a[0]===subj||a[0].startsWith(subj))&&(a[1]===per||a[1].endsWith(per))}
 function isDone(k){return !!(S.done[k]&&S.done[k].d)}
 function setDone(k,v,date){const st=S.done[k]||{rv:[]};S.done[k]={d:v?(date||today()):null,rv:v?(st.rv||[]):[],up:Date.now()}}
-function examUnits(test,ex){
+// 演習プリント：outputs/<教科>_<時期>_演習.md, _演習2.md …
+function drillFiles(subj,per){const re=new RegExp('^'+subj.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'_'+per+'_演習(\\d*)\\.md$');return IDX.outputs.map(n=>{const m=n.match(re);return m?{name:n,no:m[1]?+m[1]:1}:null}).filter(Boolean).sort((a,b)=>a.no-b.no)}
+function examNotes(test,ex){return examUnits(test,ex,true).filter(u=>u.kind==='note')}
+function examUnits(test,ex,notesOnly){
   const st=S.settings,per=test.period,us=[];
   for(const n of IDX.notes){
     if(n.subject!==ex.subject)continue;
@@ -176,9 +179,18 @@ function examUnits(test,ex){
     us.push({key:'n:'+n.name,kind:'note',title:n.name,note:n,min:st.noteMin,old,ord});
   }
   us.sort((a,b)=>(a.old-b.old)||a.ord-b.ord||a.title.localeCompare(b.title,'ja'));
+  if(st.drill&&!notesOnly){
+    // 演習中心：ノートを1つずつ読む代わりに、演習プリントを解く→間違いを解き直す、を計画に入れる
+    const hasNotes=us.length>0;us.length=0;
+    const fs=drillFiles(ex.subject,per),rounds=Math.max(st.drillRounds,fs.length);
+    for(let i=1;i<=rounds;i++){const f=fs.find(x=>x.no===i);
+      if(f){us.push({key:'d:'+f.name,kind:'drill',title:`演習プリント${i>1?i+'回目':''}を解く`,min:st.drillMin,path:'outputs/'+f.name});
+        us.push({key:'x:'+f.name,kind:'fix',title:`間違えた問題を解き直す${i>1?'（'+i+'回目）':''}`,min:st.fixMin,path:'outputs/'+f.name})}
+      else if(hasNotes)us.push({key:`m:${ex.id}:${i}`,kind:'needdrill',title:`演習プリント${i>1?i+'回目':''}を解く（Claudeに作ってもらう）`,min:st.drillMin})}
+  }
   for(const t of S.tasks.filter(t=>t.examId===ex.id))us.push({key:'t:'+t.id,kind:'task',title:t.title,min:t.min,task:t});
   const tp=`${ex.subject}_${per}_対策.md`;
-  if(IDX.outputs.includes(tp))us.push({key:'p:'+ex.id,kind:'taisaku',title:'対策プリントで総チェック',min:40,path:'outputs/'+tp});
+  if(!notesOnly&&IDX.outputs.includes(tp))us.push({key:'p:'+ex.id,kind:'taisaku',title:'対策プリントで総チェック',min:40,path:'outputs/'+tp});
   return us;
 }
 function unprocessed(subj,per){const c=new Set(IDX.cited);return IDX.sources.filter(p=>srcMatch(p,subj,per)&&!c.has(p))}
@@ -247,6 +259,9 @@ function claudeActions(){
     const un=unprocessed(ex.subject,test.period).length;
     if(un)out.push({cmd:`Ingest ${ex.subject} ${test.period}`,why:`未処理のプリント・ノートが ${un}件（ノート化すると範囲に入ります）`});
     const left=diffD(t,ex.date);
+    if(S.settings.drill&&IDX.vault&&examNotes(test,ex).length){const fs=drillFiles(ex.subject,test.period);
+      if(!fs.length)out.push({cmd:`演習 ${ex.subject} ${test.period}`,why:'演習プリントがまだありません。作ると「解く→解き直す」が計画に入ります'});
+      else if(fs.every(f=>isDone('d:'+f.name))&&left>1)out.push({cmd:`演習 ${ex.subject} ${test.period}`,why:`${fs.length}回目まで解き終わりました。次の演習プリント（新しい問題）を作ります`})}
     if(left<=7&&IDX.vault&&!IDX.outputs.includes(`${ex.subject}_${test.period}_対策.md`))out.push({cmd:`対策 ${ex.subject} ${test.period}`,why:`テストまであと${left}日。対策プリントを作ると総チェック用に計画へ入ります`});
   }
   return out;
@@ -340,6 +355,9 @@ function itemMd(i,withSubj){
     case 'task':return `📝 ${sj}${i.title}${mn} %%${i.key}%%`;
     case 'taisaku':return `📄 ${sj}[[${i.path.split('/').pop().replace(/\.md$/,'')}|対策プリント]]で総チェック${mn} %%${i.key}%%`;
     case 'final':return `🧠 ${sj}テスト前日の総復習${mn} %%${i.key}%%`;
+    case 'drill':return `✍️ ${sj}[[${i.path.split('/').pop().replace(/\.md$/,'')}|${i.title}]]${mn} %%${i.key}%%`;
+    case 'fix':return `🔧 ${sj}[[${i.path.split('/').pop().replace(/\.md$/,'')}|${i.title}]]${mn} %%${i.key}%%`;
+    case 'needdrill':return `✍️ ${sj}${i.title}${mn} %%${i.key}%%`;
   }
 }
 function renderTestMd(test){
@@ -354,6 +372,7 @@ function renderTestMd(test){
     s.push('');
     for(const u of us){const sm=u.kind==='note'&&u.note.summary?` — ${u.note.summary.replace(/%%/g,'')}`:'';s.push(`- [${isDone(u.key)?'x':' '}] ${u.kind==='note'?`[[${u.title}]]${u.note.asked?' ⭐':''}${sm}`:itemMd(u)}`)}
     if(!us.length)s.push('（まだノートがありません）');
+    if(S.settings.drill){const ns=examNotes(test,ex);if(ns.length){s.push('','📖 間違えたときに見るノート：');for(const u of ns)s.push(`- [[${u.title}]]${u.note.asked?' ⭐':''}`)}}
     secs.push(s.join('\n'));
   }
   L.push(`全体 ${blocks(all?dn/all:0)} ${pct(dn,all)}%（${dn}/${all}）　⭐=過去に出題されたもの（優先して計画に入れます）`,'',secs.join('\n\n'),'');
@@ -483,10 +502,10 @@ function renderSync(){
   el.innerHTML=`<span style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.35">${p.join('')}</span><button class="btn sm" data-act="sync">${syncMsg==='要再接続'?'再接続':'同期'}</button>`;
 }
 function itemHtml(i,opts={}){
-  const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠'}[k];
-  const link=k==='note'||k==='review'?obLink(i.note.path):k==='taisaku'?obLink(i.path):null;
+  const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠',drill:'✍️',fix:'🔧',needdrill:'✍️'}[k];
+  const link=k==='note'||k==='review'?obLink(i.note.path):(k==='taisaku'||k==='drill'||k==='fix')?obLink(i.path):null;
   const tags=[];if(i.over)tags.push('<span class="tag over">詰め込み</span>');if(i.late)tags.push('<span class="tag w">遅れ</span>');
-  if(i.old)tags.push('<span class="tag w">前の範囲</span>');if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
+  if(i.old)tags.push('<span class="tag w">前の範囲</span>');if(k==='needdrill')tags.push('<span class="tag w">要作成</span>');if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
   const sub=i.note&&i.note.summary?esc(i.note.summary):'';
   return `<div class="item ${i.done?'done':''}"><input type="checkbox" ${i.done?'checked':''} ${opts.nocheck?'disabled':''} data-act="chk" data-key="${esc(i.key)}">
   <div class="b"><div class="t">${ic} ${i.E&&opts.subj!==false?sdot(i.E.ex.subject)+`<span class="muted">${esc(i.E.ex.subject)}</span> `:''}${k==='review'?'復習：':''}${esc(i.title)} ${tags.join('')}</div>${sub?`<div class="m">${sub}</div>`:''}</div>
@@ -525,7 +544,7 @@ function vPlan(P){
   for(const d of P.days){
     const r=d.cap?Math.min(1,d.load/d.cap):1,ov=d.load>d.cap;
     h+=`<div class="day"><div class="dh"><b>${fmtD(d.date)}${d.date===today()?' 今日':''}</b><div class="bar"><i style="width:${r*100}%;${ov?'background:var(--warn)':''}"></i></div><button class="btn sm" data-act="cap" data-date="${d.date}">${d.load}/${d.cap}分${S.dayCap[d.date]!=null?' ✎':''}</button></div>
-    <div class="dl">${d.items.map(i=>`<div>${i.done?'✔︎':'・'} ${i.E?sdot(i.E.ex.subject):''}${{note:'',review:'🔁 ',task:'📝 ',taisaku:'📄 ',final:'🧠 '}[i.kind]}${esc(i.title)} <span class="muted">${i.min}分</span>${i.over?' <span class="tag over">詰め込み</span>':''}</div>`).join('')||'<span class="muted">予定なし</span>'}</div></div>`;
+    <div class="dl">${d.items.map(i=>`<div>${i.done?'✔︎':'・'} ${i.E?sdot(i.E.ex.subject):''}${{note:'',review:'🔁 ',task:'📝 ',taisaku:'📄 ',final:'🧠 ',drill:'✍️ ',fix:'🔧 ',needdrill:'✍️ '}[i.kind]}${esc(i.title)} <span class="muted">${i.min}分</span>${i.over?' <span class="tag over">詰め込み</span>':''}</div>`).join('')||'<span class="muted">予定なし</span>'}</div></div>`;
   }
   return h+'</div>';
 }
@@ -566,7 +585,7 @@ function vTests(){
     h+=`<div class="card"><div class="row"><input style="flex:1;font-weight:600" value="${esc(test.name)}" data-act="tname" data-id="${test.id}" placeholder="テスト名"><label>時期</label><input list="dlPer" style="width:130px" value="${esc(test.period)}" data-act="tper" data-id="${test.id}"><button class="btn sm" data-act="deltest" data-id="${test.id}">削除</button></div>
     <div class="muted" style="margin-top:8px">教科と日付</div>`;
     for(const ex of test.exams){
-      const n=IDX.notes.length?examUnits(test,ex).filter(u=>u.kind==='note').length:null;
+      const n=IDX.notes.length?examNotes(test,ex).length:null;
       h+=`<div class="exrow"><input list="dlSub" value="${esc(ex.subject)}" placeholder="教科" data-act="exsub" data-t="${test.id}" data-id="${ex.id}"><input type="date" value="${esc(ex.date)}" data-act="exdate" data-t="${test.id}" data-id="${ex.id}"><button class="btn sm" data-act="delex" data-t="${test.id}" data-id="${ex.id}">×</button></div>
       <div class="tasks">${n!=null&&ex.subject?`<span class="muted">範囲のノート ${n}件</span>`:''}
         ${S.tasks.filter(x=>x.examId===ex.id).map(x=>`<div>📝 ${esc(x.title)} <span class="muted">${x.min}分</span> <a href="#" data-act="deltask" data-id="${x.id}">削除</a></div>`).join('')}
@@ -598,6 +617,8 @@ function vSet(){
   ${IDX.notes.length?`<div class="muted">読み込み済み：ノート ${IDX.notes.length}件 / ソース ${IDX.sources.length}件（${new Date(IDX.at).toLocaleString('ja-JP')}）</div>`:''}`
   :`<p class="muted" style="margin-top:0">この端末ではObsidianのフォルダを直接読めません。上の「スマホ⇔PC 同期」を設定すると、PCが読み込んだノート一覧とObsidianでのチェックがこの端末にも届きます${IDX.at?`（ノート ${IDX.notes.length}件を受信済み）`:''}。</p>`}</div>
   <div class="card"><h2>⏰ 勉強時間</h2>${num('weekday','平日に使える時間')}${num('holiday','土日に使える時間')}${num('noteMin','ノート1つの目安')}${num('reviewMin','復習1回')}${num('finalMin','前日の総復習')}
+  <div class="row"><label style="min-width:150px">学習スタイル</label><label style="color:var(--text)"><input type="checkbox" data-act="setb" data-k="drill" ${st.drill?'checked':''}> 演習中心で計画する（ノートを読む代わりに、演習プリントを解く→間違いを解き直す）</label></div>
+  ${st.drill?num('drillMin','演習プリント1回')+num('fixMin','解き直し1回')+`<div class="row"><label style="min-width:150px">演習の回数</label><input type="number" min="1" max="5" value="${st.drillRounds}" data-act="setn" data-k="drillRounds">回（テストまでに解く演習プリントの枚数）</div>`:''}
   <div class="row"><label style="min-width:150px">前の時期のノート</label><label style="color:var(--text)"><input type="checkbox" data-act="setb" data-k="includeOld" ${st.includeOld?'checked':''}> 今回のプリントに出てくる前の時期（一学期など）のノートも範囲に入れる</label></div>
   <div class="row"><label style="min-width:150px">総復習にあてる日数</label><input type="number" min="0" max="3" value="${st.reserve}" data-act="setn" data-k="reserve">日（テストの前日から）</div>
   <div class="row"><label style="min-width:150px">復習のタイミング</label><input value="${st.review.join(',')}" data-act="setrv" style="width:100px">日後（覚えた日から。忘却曲線）</div>
