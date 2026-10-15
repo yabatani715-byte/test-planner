@@ -49,6 +49,15 @@ input[type=number]{width:80px}
 .item.done .t{text-decoration:line-through;color:var(--sub)}
 .item .m{font-size:12px;color:var(--sub)}
 .item .min{font-size:12px;color:var(--sub);white-space:nowrap}
+.modebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--text);padding:10px 14px;font-size:15px;cursor:pointer;min-height:44px}
+.seg button.on{background:var(--accent);color:#fff;font-weight:600}
+.pinb{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:4px 8px;font-size:13px;margin-top:4px;cursor:pointer;min-height:32px}
+.pinb.on{border-color:var(--accent);color:var(--accent)}
+.pinrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 4px 12px}
+.pinrow button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:8px 10px;font-size:14px;min-height:40px;cursor:pointer}
+.pinrow button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:6px;background:var(--accent2);color:var(--accent);margin-right:4px;vertical-align:1px}
 .tag.w{background:var(--warnbg);color:var(--warn)}
 .tag.over{background:var(--warnbg);color:var(--warn)}
@@ -113,11 +122,11 @@ let S=Object.assign({tests:[],tasks:[],done:{},logs:[],dayCap:{}},lsGet(LS,{}));
 S.settings=Object.assign(defSettings(),S.settings||{});
 let IDX=Object.assign({vault:null,notes:[],sources:[],cited:[],outputs:[],at:0},lsGet(LS_IDX,{}));
 let SYNC=lsGet(LS_SYNC,{});
-S.deleted=S.deleted||{};S.ups=S.ups||{};S.logs.forEach(l=>l.id||(l.id=Math.random().toString(36).slice(2,9)));
+S.deleted=S.deleted||{};S.ups=S.ups||{};S.pin=S.pin||{};S.logs.forEach(l=>l.id||(l.id=Math.random().toString(36).slice(2,9)));
 // 変更検知：保存のたびに前回との差分を見て、変わった項目に更新時刻(up)を付ける（端末間の統合に使う）
 let SNAP=null;
 const snapOf=o=>{const {up,...r}=o;return JSON.stringify(r)};
-function takeSnap(){SNAP={settings:JSON.stringify(S.settings),dayCap:JSON.stringify(S.dayCap)};S.tests.forEach(t=>SNAP['T'+t.id]=snapOf(t));S.tasks.forEach(t=>SNAP['K'+t.id]=snapOf(t))}
+function takeSnap(){SNAP={settings:JSON.stringify(S.settings),dayCap:JSON.stringify(S.dayCap),pin:JSON.stringify(S.pin||{})};S.tests.forEach(t=>SNAP['T'+t.id]=snapOf(t));S.tasks.forEach(t=>SNAP['K'+t.id]=snapOf(t))}
 function stamp(){
   const now=Date.now();
   if(SNAP){
@@ -125,6 +134,7 @@ function stamp(){
     for(const [k,o] of Object.entries(cur))if(SNAP[k]!==snapOf(o))o.up=now;
     for(const k of Object.keys(SNAP))if((k[0]==='T'||k[0]==='K')&&!cur[k])S.deleted[k.slice(1)]=now;
     if(SNAP.settings!==JSON.stringify(S.settings))S.ups.settings=now;
+    if(SNAP.pin!==JSON.stringify(S.pin||{}))S.ups.pin=now;
     if(SNAP.dayCap!==JSON.stringify(S.dayCap))S.ups.dayCap=now;
   }
   takeSnap();
@@ -202,7 +212,9 @@ function buildPlan(){
   const exams=allExams().filter(E=>E.ex.date>=t).map(E=>{
     const units=examUnits(E.test,E.ex);
     let dl=addD(E.ex.date,-1-st.reserve);if(dl<t)dl=t;
-    return {...E,units,pending:units.filter(u=>!isDone(u.key)),deadline:dl,finalDay:st.reserve>0?addD(E.ex.date,-1):null,over:[]};
+    // 手動で日付を決めたもの（📅）は、その日に固定して自動割り振りから外す
+    const pinned=units.filter(u=>!isDone(u.key)&&S.pin[u.key]&&S.pin[u.key]>=t&&S.pin[u.key]<E.ex.date);
+    return {...E,units,pinned,pending:units.filter(u=>!isDone(u.key)&&!pinned.includes(u)),deadline:dl,finalDay:st.reserve>0?addD(E.ex.date,-1):null,over:[]};
   });
   // 今日の復習
   const reviews=[],seen=new Set();
@@ -214,7 +226,7 @@ function buildPlan(){
       const base=rv.length?rv[rv.length-1]:s.d,due=addD(base,st.review[rv.length]);
       if(due<=t){seen.add(u.key);reviews.push({...u,kind:'review',key:'r:'+u.title,min:st.reviewMin,E,done:false,late:due<t})}
     }}
-  let last=t;for(const E of exams){if(E.deadline>last)last=E.deadline;if(E.finalDay&&E.finalDay>last)last=E.finalDay}
+  let last=t;for(const E of exams){if(E.deadline>last)last=E.deadline;if(E.finalDay&&E.finalDay>last)last=E.finalDay;for(const u of E.pinned)if(S.pin[u.key]>last)last=S.pin[u.key]}
   const score=(E,d)=>E.pending.reduce((a,u)=>a+u.min,0)/(diffD(d,E.deadline)+1);
   const days=[];
   for(let d=t;d<=last;d=addD(d,1)){
@@ -223,6 +235,7 @@ function buildPlan(){
       for(const E of exams)for(const u of E.units)if(S.done[u.key]&&S.done[u.key].d===t)day.items.push({...u,E,done:true});
       day.items.push(...reviews);
     }
+    for(const E of exams)for(const u of E.pinned)if(S.pin[u.key]===d)day.items.push({...u,E,done:false,pin:true});
     for(const E of exams)if(E.finalDay===d&&d>=t)day.items.push({kind:'final',key:'f:'+E.ex.id,title:'テスト前日の総復習',min:st.finalMin,E,done:isDone('f:'+E.ex.id)});
     day.free=day.cap-day.items.reduce((a,i)=>a+i.min,0);
     days.push(day);
@@ -438,7 +451,8 @@ function mergeS(a,b){
   const au=a.ups||{},bu=b.ups||{},pick=k=>(bu[k]||0)>(au[k]||0)?b:a;
   return {tests:byId(a.tests,b.tests),tasks:byId(a.tasks,b.tasks),done,logs:[...logs.values()],
     dayCap:pick('dayCap').dayCap||{},settings:Object.assign(defSettings(),pick('settings').settings||{}),
-    ups:{settings:Math.max(au.settings||0,bu.settings||0),dayCap:Math.max(au.dayCap||0,bu.dayCap||0)},deleted:del};
+    pin:pick('pin').pin||{},
+    ups:{settings:Math.max(au.settings||0,bu.settings||0),dayCap:Math.max(au.dayCap||0,bu.dayCap||0),pin:Math.max(au.pin||0,bu.pin||0)},deleted:del};
 }
 async function ghApi(method,body){
   return fetch(`https://api.github.com/repos/${GH.repo}/contents/${GH_FILE}`+(method==='GET'?`?t=${Date.now()}`:''),
@@ -493,7 +507,14 @@ setInterval(()=>{
 },500);
 
 // ===== 画面 =====
-let TAB=lsGet(LS_TAB,'today');const OPEN=new Set();
+let TAB=lsGet(LS_TAB,'today');const OPEN=new Set();let OPENPIN=null;
+const PINNABLE=['note','task','taisaku','drill','fix','needdrill'];
+function modeBar(){const d=!!S.settings.drill;
+  return `<div class="modebar"><span class="muted">勉強のしかた</span><div class="seg"><button class="${d?'on':''}" data-act="mode" data-v="1">✍️ 演習中心</button><button class="${d?'':'on'}" data-act="mode" data-v="0">📖 ノート中心</button></div></div>`}
+function pinBtn(i){if(i.done||!i.E||!PINNABLE.includes(i.kind))return '';return `<button class="pinb ${i.pin?'on':''}" data-act="pinopen" data-key="${esc(i.key)}" title="やる日を変える">📅${i.pin?' 固定':''}</button>`}
+function pinRow(i){if(OPENPIN!==i.key||!i.E)return '';const t=today(),end=addD(i.E.ex.date,-1),cur=S.pin[i.key];let h='';
+  for(let d=t;d<=end;d=addD(d,1))h+=`<button class="${cur===d?'on':''}" data-act="pinset" data-key="${esc(i.key)}" data-v="${d}">${fmtD(d)}</button>`;
+  return `<div class="pinrow"><span class="muted">やる日：</span>${h}<button data-act="pinset" data-key="${esc(i.key)}" data-v="">自動に戻す</button></div>`}
 function renderSync(){
   const el=$('#syncSt'),p=[];
   if(vault)p.push(`<span title="Obsidian"><span class="dot ${syncMsg==='要再接続'||syncMsg==='同期エラー'?'off':'on'}"></span> Obsidian ${esc(syncMsg)}</span>`);
@@ -505,11 +526,11 @@ function itemHtml(i,opts={}){
   const k=i.kind,ic={note:'📖',review:'🔁',task:'📝',taisaku:'📄',final:'🧠',drill:'✍️',fix:'🔧',needdrill:'✍️'}[k];
   const link=k==='note'||k==='review'?obLink(i.note.path):(k==='taisaku'||k==='drill'||k==='fix')?obLink(i.path):null;
   const tags=[];if(i.over)tags.push('<span class="tag over">詰め込み</span>');if(i.late)tags.push('<span class="tag w">遅れ</span>');
-  if(i.old)tags.push('<span class="tag w">前の範囲</span>');if(k==='needdrill')tags.push('<span class="tag w">要作成</span>');if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
+  if(i.old)tags.push('<span class="tag w">前の範囲</span>');if(k==='needdrill')tags.push('<span class="tag w">要作成</span>');if(i.pin)tags.push('<span class="tag">📅日付固定</span>');if(i.note&&i.note.asked)tags.push('<span class="tag">⭐出題</span>');
   const sub=i.note&&i.note.summary?esc(i.note.summary):'';
   return `<div class="item ${i.done?'done':''}"><input type="checkbox" ${i.done?'checked':''} ${opts.nocheck?'disabled':''} data-act="chk" data-key="${esc(i.key)}">
   <div class="b"><div class="t">${ic} ${i.E&&opts.subj!==false?sdot(i.E.ex.subject)+`<span class="muted">${esc(i.E.ex.subject)}</span> `:''}${k==='review'?'復習：':''}${esc(i.title)} ${tags.join('')}</div>${sub?`<div class="m">${sub}</div>`:''}</div>
-  <div style="text-align:right"><div class="min">${i.min}分</div>${link?`<a class="ob" href="${link}">Obsidian↗</a>`:''}</div></div>`;
+  <div style="text-align:right"><div class="min">${i.min}分</div>${link?`<a class="ob" href="${link}">Obsidian↗</a>`:''}${opts.nopin?'':pinBtn(i)}</div></div>${opts.nopin?'':pinRow(i)}`;
 }
 function vTodayTab(P){
   const t=today(),td=P.days[0]||{items:[],load:0,cap:capOf(t)};
@@ -527,6 +548,7 @@ function vTodayTab(P){
     h+=`<div class="alert w">⚠ ${overs.map(E=>`${esc(E.ex.subject)}（${E.over.length}件）`).join('、')}が予定時間内に収まっていません（あと約${om}分）。1日あたり約${per}分増やすと収まります。<a href="#" data-act="goto" data-tab="set">設定</a>や<a href="#" data-act="goto" data-tab="plan">計画</a>で時間を調整しよう。</div>`}
   const acts=claudeActions();
   if(acts.length)h+=`<div class="card"><h2>🤖 Claudeに頼むこと</h2>${acts.map(a=>`<div class="cmd"><code>${esc(a.cmd)}</code><button class="btn sm" data-act="copy" data-text="${esc(a.cmd)}">コピー</button></div><div class="muted" style="margin:-2px 0 4px">${esc(a.why)}</div>`).join('')}</div>`;
+  h=modeBar()+h;
   h+=`<div class="grid2"><div class="card" style="grid-column:1/-1"><h2>✅ 今日やること<span class="r">${fmtD(t)}</span></h2>
     <div class="ring"><div class="big">${dm}<span class="muted"> / ${td.load}分</span></div><div class="bar" style="flex:1"><i style="width:${Math.min(100,pct(dm,td.load))}%"></i></div><span class="muted">使える時間 ${td.cap}分</span></div>
     ${td.items.length?td.items.map(i=>itemHtml(i)).join(''):`<div class="empty">${P.exams.length?'今日の予定はありません 🎉':'テストを登録すると、ここにやることが並びます'}</div>`}</div></div>`;
@@ -540,11 +562,11 @@ function vTodayTab(P){
 }
 function vPlan(P){
   if(!P.days.length)return `<div class="card empty">テストを登録すると、テスト日から逆算した毎日の予定がここに出ます。</div>`;
-  let h=`<div class="card"><h2>🗓 テストまでの予定</h2><div class="muted" style="margin-bottom:6px">残っている範囲を、テストが近い教科・量が多い教科から優先して毎日に割り振っています。終わらなかった分は翌日以降に自動で組み直します。前日は総復習の日です。「使える時間」を押すと、その日だけ変更できます。</div>`;
+  let h=modeBar()+`<div class="card"><h2>🗓 テストまでの予定</h2><div class="muted" style="margin-bottom:6px">📅 を押すと、そのやることをする日を自分で決められます（テスト前日まで）。残っている範囲を、テストが近い教科・量が多い教科から優先して毎日に割り振っています。終わらなかった分は翌日以降に自動で組み直します。前日は総復習の日です。「使える時間」を押すと、その日だけ変更できます。</div>`;
   for(const d of P.days){
     const r=d.cap?Math.min(1,d.load/d.cap):1,ov=d.load>d.cap;
     h+=`<div class="day"><div class="dh"><b>${fmtD(d.date)}${d.date===today()?' 今日':''}</b><div class="bar"><i style="width:${r*100}%;${ov?'background:var(--warn)':''}"></i></div><button class="btn sm" data-act="cap" data-date="${d.date}">${d.load}/${d.cap}分${S.dayCap[d.date]!=null?' ✎':''}</button></div>
-    <div class="dl">${d.items.map(i=>`<div>${i.done?'✔︎':'・'} ${i.E?sdot(i.E.ex.subject):''}${{note:'',review:'🔁 ',task:'📝 ',taisaku:'📄 ',final:'🧠 ',drill:'✍️ ',fix:'🔧 ',needdrill:'✍️ '}[i.kind]}${esc(i.title)} <span class="muted">${i.min}分</span>${i.over?' <span class="tag over">詰め込み</span>':''}</div>`).join('')||'<span class="muted">予定なし</span>'}</div></div>`;
+    <div class="dl">${d.items.map(i=>`<div>${i.done?'✔︎':'・'} ${i.E?sdot(i.E.ex.subject):''}${{note:'',review:'🔁 ',task:'📝 ',taisaku:'📄 ',final:'🧠 ',drill:'✍️ ',fix:'🔧 ',needdrill:'✍️ '}[i.kind]}${esc(i.title)} <span class="muted">${i.min}分</span>${i.over?' <span class="tag over">詰め込み</span>':''} ${pinBtn(i)}</div>${pinRow(i)}`).join('')||'<span class="muted">予定なし</span>'}</div></div>`;
   }
   return h+'</div>';
 }
@@ -566,7 +588,7 @@ function vProg(P){
       else if(E)pace=`<span class="muted">残り${rem}分 · 1日あたり約${Math.ceil(rem/Math.max(1,diffD(t,E.deadline)+1))}分</span>`;
       h+=`<div class="subj"><div class="sh" data-act="open" data-id="${ex.id}"><span class="n">${sdot(ex.subject)}${esc(ex.subject)}</span><div class="bar"><i style="width:${pct(d,us.length)}%;background:${colorOf(ex.subject)}"></i></div><span class="p">${pct(d,us.length)}%（${d}/${us.length}）${ex.date?` · ${fmtD(ex.date)}${left>=0?` あと${left}日`:''}`:''} ${op?'▲':'▼'}</span></div>
       <div style="margin:4px 0 0 20px">${pace}${un?` <span class="tag w">未ノート化 ${un}件</span>`:''}</div>
-      ${op?`<div style="margin-top:6px">${us.map(u=>itemHtml({...u,done:isDone(u.key)},{subj:false})).join('')||'<div class="muted">この教科・時期のノートがありません</div>'}</div>`:''}</div>`;
+      ${op?`<div style="margin-top:6px">${us.map(u=>itemHtml({...u,done:isDone(u.key)},{subj:false,nopin:true})).join('')||'<div class="muted">この教科・時期のノートがありません</div>'}</div>`:''}</div>`;
     }
     h+='</div>';
   }
@@ -645,6 +667,9 @@ document.addEventListener('click',async e=>{
     case 'goto':TAB=b.dataset.tab;lsSet(LS_TAB,TAB);render();break;
     case 'sync':await cloudSync(true);await syncNow(true);break;
     case 'connect':connectVault();break;
+    case 'mode':S.settings.drill=b.dataset.v==='1';save();render();toast(S.settings.drill?'演習中心で計画しました':'ノート中心で計画しました');break;
+    case 'pinopen':{const k=b.dataset.key;OPENPIN=OPENPIN===k?null:k;render();break}
+    case 'pinset':{const k=b.dataset.key,v=b.dataset.v;if(v)S.pin[k]=v;else delete S.pin[k];OPENPIN=null;save();render();toast(v?`${fmtD(v)} にやります`:'自動の割り振りに戻しました');break}
     case 'copy':try{await navigator.clipboard.writeText(b.dataset.text);toast('コピーしました。Claudeに貼り付けてね')}catch{prompt('コピーしてください',b.dataset.text)}break;
     case 'open':OPEN.has(id)?OPEN.delete(id):OPEN.add(id);render();break;
     case 'cap':{const d=b.dataset.date,v=prompt(`${fmtD(d)} に使える時間（分）\n空欄でいつもの設定に戻します`,capOf(d));if(v===null)return;if(v.trim()==='')delete S.dayCap[d];else if(!isNaN(+v))S.dayCap[d]=Math.max(0,+v);save();render();break}
